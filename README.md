@@ -24,10 +24,7 @@ Horizon gives every agent a small research lab of its own, set up the way fronti
   - **Ratings:** Elo. The leaderboard is on the dashboard.
   - **Feedback into the swarm:** every 5th open slot revives the finished leader to push its line further, and new agents are told the top 5. Agents the reviewer killed never enter.
 - **The reviewer** checks each agent every 10 steps against the goal, its plan, the milestones and the board. It kills agents that drift off the goal, fake results, reach for the network, or plant misleading wiki pages or skills.
-- **The dashboard** is laid out like macOS widgets:
-  - tiles for how close, runtime, the current train of thought, milestones, throughput, tokens, best score and GPU
-  - the tournament leaderboard and the agent grid; click either to follow one agent's work
-  - **Continue** brings back any finished research or agent
+- **The dashboard** is built from stock shadcn/ui components, through Basecoat's plain-HTML port (MIT): stat cards for how close, runtime, throughput and GPU; the current train of thought; milestones; the tournament table; the agent grid; and the selected agent's work. **Continue** brings back any finished research or agent.
 - **GitHub**: give a repo and each agent works in its own copy. The Mac pushes its commits to `horizon/<agent id>` branches using your existing git login, so the VMs never see your credentials.
 
 ## Install

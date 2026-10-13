@@ -4,142 +4,124 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Horizon</title>
-<!-- Tabler (MIT, tabler.io): the dashboard's whole look comes from its stock components -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.6.1/dist/css/tabler.min.css">
-<script>document.documentElement.dataset.bsTheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";</script>
+<!-- Basecoat (MIT, basecoatui.com): shadcn/ui components as plain HTML; Tailwind's browser build supplies layout utilities -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/basecoat.cdn.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"></script>
+<script>if (matchMedia("(prefers-color-scheme: dark)").matches) document.documentElement.classList.add("dark");</script>
+<style type="text/tailwindcss">
+@custom-variant dark (&:where(.dark, .dark *));
+@theme inline {
+  --color-background: var(--background); --color-foreground: var(--foreground); --color-card: var(--card);
+  --color-muted: var(--muted); --color-muted-foreground: var(--muted-foreground); --color-border: var(--border);
+  --color-primary: var(--primary); --color-destructive: var(--destructive);
+}
+</style>
 <style>
-/* only what Tabler has no component for */
-.dots { display: flex; flex-wrap: wrap; gap: 4px; max-height: 196px; overflow: auto; }
-.dots button { width: 10px; height: 10px; border: 0; padding: 0; border-radius: 2px; background: var(--tblr-border-color); }
-.dots .running { background: var(--tblr-primary); } .dots .done { background: var(--tblr-success); }
-.dots .bad { background: var(--tblr-danger); } .dots .queued { background: var(--tblr-secondary); opacity: .4; }
-.dots .sel { outline: 2px solid var(--tblr-body-color); outline-offset: 1px; }
-.log { height: 340px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
-.a2 { color: var(--tblr-secondary); } .a36 { color: var(--tblr-primary); } .a35 { color: var(--tblr-warning); }
-.thought { font-size: 1.15rem; line-height: 1.5; }
-dialog { border: 0; padding: 0; background: transparent; width: min(620px, calc(100vw - 24px)); }
-dialog::backdrop { background: rgb(0 0 0 / .35); }
+.dots button { width: 10px; height: 10px; border: 0; padding: 0; border-radius: 2px; background: var(--muted); }
+.dots .running { background: var(--primary); } .dots .done { background: #10b981; } .dots .bad { background: var(--destructive); }
+.dots .queued { background: var(--muted-foreground); opacity: .35; } .dots .sel { outline: 2px solid var(--foreground); outline-offset: 1px; }
+.a2 { color: var(--muted-foreground); } .a36 { color: #3b82f6; } .a35 { color: #d97706; }
 tr[data-id] { cursor: pointer; }
 </style>
 </head>
-<body>
-<div class="page">
-  <header class="navbar navbar-expand-md d-print-none">
-    <div class="container-xl">
-      <div class="navbar-brand pe-3">Horizon</div>
-      <div class="navbar-nav flex-row order-md-last align-items-center gap-3">
-        <span class="d-flex align-items-center gap-2 text-secondary small"><span class="status-dot" id="dot"></span><span id="engine">Engine off</span></span>
-        <button class="btn btn-sm" type="button" id="gear">Settings</button>
-      </div>
+<body class="bg-background text-foreground antialiased">
+<header class="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur">
+ <div class="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 lg:px-6">
+  <span class="font-semibold">Horizon</span>
+  <div class="ml-auto flex items-center gap-2">
+    <span class="badge" data-variant="outline"><span class="inline-block size-2 rounded-full" id="dot"></span><span class="hidden max-w-80 truncate sm:inline" id="engine">Engine off</span></span>
+    <button class="btn" data-variant="outline" data-size="sm" type="button" id="gear">Settings</button>
+  </div>
+ </div>
+</header>
+
+<main class="mx-auto flex max-w-6xl flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+  <form class="card" id="new">
+    <section class="grid gap-3 lg:grid-cols-[1fr_90px_90px_180px_auto] lg:items-end">
+      <div class="grid gap-2"><label class="label" for="goal">New research</label><input class="input" id="goal" placeholder="What should the lab find out?" autocomplete="off"></div>
+      <div class="grid gap-2"><label class="label" for="agents">Agents</label><input class="input" id="agents" value="16" inputmode="numeric"></div>
+      <div class="grid gap-2"><label class="label" for="budget">Budget</label><input class="input" id="budget" value="10B"></div>
+      <div class="grid gap-2"><label class="label" for="repo">Git repo</label><input class="input" id="repo" placeholder="optional"></div>
+      <button class="btn">Start research</button>
+    </section>
+  </form>
+
+  <div class="flex flex-col items-start gap-3 lg:flex-row lg:items-center" id="head" hidden>
+    <div class="min-w-0 flex-1">
+      <p class="text-sm text-muted-foreground" id="pre"></p>
+      <h1 class="text-2xl font-semibold tracking-tight" id="title"></h1>
     </div>
-  </header>
+    <select class="select w-full lg:w-72" id="pick" aria-label="Research"></select>
+    <span id="acts"></span>
+  </div>
 
-  <div class="page-wrapper">
-    <div class="page-header d-print-none">
-      <div class="container-xl">
-        <form class="card" id="new">
-          <div class="card-body">
-            <div class="row g-2 align-items-end">
-              <div class="col-12 col-lg"><label class="form-label" for="goal">New research</label><input class="form-control" id="goal" placeholder="What should the lab find out?" autocomplete="off"></div>
-              <div class="col-4 col-lg-1"><label class="form-label" for="agents">Agents</label><input class="form-control" id="agents" value="16" inputmode="numeric"></div>
-              <div class="col-4 col-lg-1"><label class="form-label" for="budget">Budget</label><input class="form-control" id="budget" value="10B"></div>
-              <div class="col-4 col-lg-2"><label class="form-label" for="repo">Git repo</label><input class="form-control" id="repo" placeholder="optional"></div>
-              <div class="col-12 col-lg-auto"><button class="btn btn-primary w-100">Start research</button></div>
-            </div>
-          </div>
-        </form>
-        <div class="row g-2 align-items-center mt-3" id="head" hidden>
-          <div class="col"><div class="page-pretitle" id="pre"></div><h2 class="page-title" id="title"></h2></div>
-          <div class="col-12 col-md-auto ms-auto d-flex gap-2">
-            <select class="form-select" id="pick" aria-label="Research"></select>
-            <span id="acts"></span>
-          </div>
-        </div>
-      </div>
+  <div class="card items-center py-16 text-center" id="empty">
+    <header><h2>No research yet</h2><p>Ask a question above. Agents plan milestones, run experiments in their own VMs, curate a wiki and keep going until the budget runs out.</p></header>
+  </div>
+
+  <div class="flex flex-col gap-4 lg:gap-6" id="cards" hidden>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="card"><header><p>How close</p><h2 class="text-3xl font-semibold tabular-nums" id="pct"></h2>
+        <div class="card-action"><span class="badge" data-variant="outline" id="msbadge"></span></div></header>
+        <footer class="flex-col items-stretch gap-2 text-sm"><div class="progress" role="progressbar" aria-label="Milestones done"><span id="pbar"></span></div><div class="text-muted-foreground" id="msn"></div></footer></div>
+      <div class="card"><header><p>Runtime</p><h2 class="text-3xl font-semibold tabular-nums" id="clock"></h2>
+        <div class="card-action"><span class="badge" data-variant="outline" id="runbadge"></span></div></header>
+        <footer class="flex-col items-start gap-1 text-sm"><div class="font-medium" id="since"></div><div class="text-muted-foreground">summed across revives</div></footer></div>
+      <div class="card"><header><p>Throughput</p><h2 class="text-3xl font-semibold tabular-nums" id="tps"></h2>
+        <div class="card-action"><span class="badge" data-variant="outline">tok/s</span></div></header>
+        <footer class="flex-col items-stretch gap-2 text-sm"><div class="progress" role="progressbar" aria-label="Token budget used"><span id="tbar"></span></div><div class="text-muted-foreground" id="tok"></div></footer></div>
+      <div class="card"><header><p>GPU</p><h2 class="text-3xl font-semibold tabular-nums" id="mhz"></h2>
+        <div class="card-action"><span class="badge" data-variant="outline" id="gpubadge"></span></div></header>
+        <footer class="flex-col items-stretch gap-2 text-sm" id="gpu"></footer></div>
     </div>
 
-    <div class="page-body">
-      <div class="container-xl" id="body">
-        <div class="empty" id="empty">
-          <p class="empty-title">No research yet</p>
-          <p class="empty-subtitle text-secondary">Ask a question above. Agents plan milestones, run experiments in their own VMs, curate a wiki and keep going until the budget runs out.</p>
-        </div>
-        <div class="row row-deck row-cards" id="cards" hidden>
-          <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body">
-            <div class="subheader">How close</div><div class="h1 mb-3" id="pct"></div>
-            <div class="d-flex mb-2 small"><span id="msn"></span></div>
-            <div class="progress progress-sm"><div class="progress-bar bg-success" id="pbar" role="progressbar" aria-label="Milestones done"></div></div>
-          </div></div></div>
-          <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body">
-            <div class="subheader">Runtime</div><div class="h1 mb-3" id="clock"></div>
-            <div class="small text-secondary" id="since"></div>
-          </div></div></div>
-          <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body">
-            <div class="subheader">Throughput</div><div class="h1 mb-3" id="tps"></div>
-            <div class="d-flex mb-2 small"><span id="tok"></span></div>
-            <div class="progress progress-sm"><div class="progress-bar bg-primary" id="tbar" role="progressbar" aria-label="Token budget used"></div></div>
-          </div></div></div>
-          <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body">
-            <div class="subheader mb-2">GPU</div><div id="gpu"></div>
-          </div></div></div>
+    <div class="card"><header><h2>Train of thought</h2><p id="tby"></p></header>
+      <section><p class="text-lg leading-relaxed" id="thought"></p><p class="mt-2 text-sm text-muted-foreground" id="tpart"></p></section></div>
 
-          <div class="col-12"><div class="card">
-            <div class="card-header"><h3 class="card-title">Train of thought</h3><div class="card-actions small text-secondary" id="tby"></div></div>
-            <div class="card-body"><p class="thought mb-2" id="thought"></p><div class="small text-secondary" id="tpart"></div></div>
-          </div></div>
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-5 lg:gap-6">
+      <div class="card lg:col-span-2"><header><h2>Milestones</h2><p id="mscount"></p></header><section><ul class="grid gap-3 text-sm" id="ms"></ul></section></div>
+      <div class="card lg:col-span-3 swarm"><header><h2>Tournament</h2><p id="tsub"></p></header>
+        <section class="table-container"><table class="table">
+          <thead><tr><th>#</th><th>Direction</th><th>Score</th><th class="text-end">Elo</th><th class="text-end">W-L-D</th></tr></thead><tbody id="lb"></tbody></table></section></div>
+    </div>
 
-          <div class="col-lg-5"><div class="card">
-            <div class="card-header"><h3 class="card-title">Milestones</h3><div class="card-actions small text-secondary" id="mscount"></div></div>
-            <div class="list-group list-group-flush" id="ms"></div>
-          </div></div>
-          <div class="col-lg-7 swarm"><div class="card">
-            <div class="card-header"><h3 class="card-title">Tournament</h3><div class="card-actions small text-secondary" id="tsub"></div></div>
-            <div class="table-responsive"><table class="table card-table table-vcenter">
-              <thead><tr><th class="w-1">#</th><th>Direction</th><th>Score</th><th>Elo</th><th>W-L-D</th></tr></thead><tbody id="lb"></tbody></table></div>
-          </div></div>
-
-          <div class="col-lg-4 swarm"><div class="card">
-            <div class="card-header"><h3 class="card-title">Agents</h3><div class="card-actions small text-secondary" id="asub"></div></div>
-            <div class="card-body d-flex flex-column">
-              <div class="dots" id="dots" aria-label="Agents"></div>
-              <div class="d-flex gap-3 small text-secondary mt-auto pt-3">
-                <span class="d-flex align-items-center gap-1"><span class="status-dot status-dot-animated bg-primary"></span>working</span>
-                <span class="d-flex align-items-center gap-1"><span class="status-dot bg-success"></span>done</span>
-                <span class="d-flex align-items-center gap-1"><span class="status-dot bg-danger"></span>stopped</span>
-              </div>
-            </div>
-          </div></div>
-          <div class="col-lg-8" id="workcol"><div class="card">
-            <div class="card-header"><h3 class="card-title">Work</h3><div class="card-actions small text-secondary text-truncate" style="max-width:60%" id="wsub"></div></div>
-            <div class="card-body"><pre class="log" id="log" tabindex="0"></pre></div>
-          </div></div>
-        </div>
-      </div>
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
+      <div class="card swarm"><header><h2>Agents</h2><p id="asub"></p></header>
+        <section><div class="dots flex max-h-52 flex-wrap gap-1 overflow-auto" id="dots" aria-label="Agents"></div>
+          <div class="mt-4 flex gap-4 text-xs text-muted-foreground">
+            <span class="flex items-center gap-1.5"><span class="size-2 rounded-full bg-primary"></span>working</span>
+            <span class="flex items-center gap-1.5"><span class="size-2 rounded-full bg-emerald-500"></span>done</span>
+            <span class="flex items-center gap-1.5"><span class="size-2 rounded-full bg-destructive"></span>stopped</span></div></section></div>
+      <div class="card lg:col-span-2" id="workcol"><header><h2>Work</h2><p class="truncate" id="wsub"></p></header>
+        <section><pre class="h-80 overflow-auto rounded-md bg-muted p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words" id="log" tabindex="0"></pre></section></div>
     </div>
   </div>
-</div>
+</main>
 
-<dialog id="settings"><div class="card">
-  <div class="card-header"><h3 class="card-title">Settings</h3><div class="card-actions"><button class="btn btn-sm" type="button" id="closeSet">Done</button></div></div>
-  <div class="card-body">
-    <div class="mb-3"><div class="form-label">Model source</div>
-      <label class="form-check form-check-inline"><input class="form-check-input" type="radio" name="src" value="local" checked><span class="form-check-label">This Mac</span></label>
-      <label class="form-check form-check-inline"><input class="form-check-input" type="radio" name="src" value="api"><span class="form-check-label">API key</span></label></div>
-    <div id="apiRows" hidden>
-      <div class="mb-2"><label class="form-label" for="url">Endpoint</label><input class="form-control" id="url" placeholder="https://openrouter.ai/api/v1/chat/completions"></div>
-      <div class="mb-2"><label class="form-label" for="key">Key</label><input class="form-control" id="key" type="password" autocomplete="off"></div>
-      <div class="mb-2"><label class="form-label" for="model">Model</label><input class="form-control" id="model"></div>
-    </div>
-    <div class="d-flex align-items-center gap-2 mb-4"><button class="btn btn-primary btn-sm" type="button" id="saveSrc">Save</button><span class="small text-secondary" id="srcMsg"></span></div>
-    <div class="mb-2"><label class="form-label" for="smodel">Local engine <span class="text-secondary fw-normal" id="engState"></span></label>
-      <div class="input-group"><input class="form-control" id="smodel"><button class="btn btn-primary" type="button" id="serve">Start</button><button class="btn" type="button" id="halt">Stop</button></div></div>
-    <div class="mb-4"><label class="form-label" for="hosts">Pair Macs (optional)</label>
-      <div class="input-group"><input class="form-control" id="hosts" placeholder="studio1.local,studio2.local"><button class="btn" type="button" id="pair">Pair</button></div></div>
-    <div class="form-label">Adapters the agents trained</div>
+<dialog id="settings" class="dialog" aria-labelledby="set-title" onclick="if (event.target === this) this.close()">
+  <div class="sm:max-w-lg">
+    <header><h2 id="set-title">Settings</h2><p>Where the model runs, and what the agents trained.</p></header>
+    <section class="grid gap-5">
+      <fieldset class="grid gap-2"><legend class="label mb-1">Model source</legend>
+        <div class="flex gap-4 text-sm">
+          <label class="label gap-2 font-normal"><input class="input" type="radio" name="src" value="local" checked> This Mac</label>
+          <label class="label gap-2 font-normal"><input class="input" type="radio" name="src" value="api"> API key</label></div></fieldset>
+      <div class="grid gap-3" id="apiRows" hidden>
+        <div class="grid gap-2"><label class="label" for="url">Endpoint</label><input class="input" id="url" placeholder="https://openrouter.ai/api/v1/chat/completions"></div>
+        <div class="grid gap-2"><label class="label" for="key">Key</label><input class="input" id="key" type="password" autocomplete="off"></div>
+        <div class="grid gap-2"><label class="label" for="model">Model</label><input class="input" id="model"></div>
+      </div>
+      <div class="flex items-center gap-3"><button class="btn" data-size="sm" type="button" id="saveSrc">Save</button><span class="text-sm text-muted-foreground" id="srcMsg"></span></div>
+      <div class="grid gap-2"><label class="label" for="smodel">Local engine <span class="font-normal text-muted-foreground" id="engState"></span></label>
+        <div class="flex gap-2"><input class="input" id="smodel"><button class="btn" type="button" id="serve">Start</button><button class="btn" data-variant="outline" type="button" id="halt">Stop</button></div></div>
+      <div class="grid gap-2"><label class="label" for="hosts">Pair Macs (optional)</label>
+        <div class="flex gap-2"><input class="input" id="hosts" placeholder="studio1.local,studio2.local"><button class="btn" data-variant="outline" type="button" id="pair">Pair</button></div></div>
+      <div class="grid gap-2"><span class="label">Adapters the agents trained</span><div class="table-container"><table class="table"><tbody id="adapters"></tbody></table></div></div>
+      <pre class="max-h-28 overflow-auto rounded-md bg-muted p-3 font-mono text-xs text-muted-foreground whitespace-pre-wrap" id="elog"></pre>
+    </section>
+    <footer><button class="btn" data-variant="outline" type="button" onclick="this.closest('dialog').close()">Done</button></footer>
   </div>
-  <div class="table-responsive"><table class="table card-table table-vcenter"><tbody id="adapters"></tbody></table></div>
-  <div class="card-footer"><pre class="log mb-0 text-secondary" id="elog" style="height:110px"></pre></div>
-</div></dialog>
+</dialog>
 
 <script>
 const H = {"X-Horizon": "1", "Content-Type": "application/json"};
@@ -166,7 +148,7 @@ async function tick() {
   if (!items.some(x => x.id === sel)) { sel = items[0]?.id ?? null; agent = null; off = -1; }
   $("empty").hidden = !!sel; $("cards").hidden = $("head").hidden = !sel;
   if (!sel) return;
-  $("pick").innerHTML = items.map(x => `<option value="${x.id}" ${x.id === sel ? "selected" : ""}>${esc((x.goal || x.hypothesis).slice(0, 60))} · ${Math.round(x.progress * 100)}%</option>`).join("");
+  $("pick").innerHTML = items.map(x => `<option value="${x.id}" ${x.id === sel ? "selected" : ""}>${esc((x.goal || x.hypothesis).slice(0, 50))} · ${Math.round(x.progress * 100)}%</option>`).join("");
   await render(items.find(x => x.id === sel));
 }
 
@@ -180,41 +162,44 @@ async function render(x) {
 
   $("pre").textContent = `${swarm ? "Swarm" : "Run"} · ${words(x.status)}`;
   $("title").textContent = x.goal || x.hypothesis;
-  $("acts").innerHTML = x.status === "running" ? `<button class="btn" type="button" data-act="stop">Stop</button>`
-    : !x.status.startsWith("killed") && x.status !== "queued" ? `<button class="btn btn-primary" type="button" data-act="continue">Continue</button>` : "";
+  $("acts").innerHTML = x.status === "running" ? `<button class="btn" data-variant="outline" type="button" data-act="stop">Stop</button>`
+    : !x.status.startsWith("killed") && x.status !== "queued" ? `<button class="btn" type="button" data-act="continue">Continue</button>` : "";
   $("acts").onclick = e => { const a = e.target.dataset.act; if (a) post(`/${swarm ? "projects" : "runs"}/${x.id}/${a}`); };
 
   $("pct").textContent = `${pct}%`;
-  $("msn").textContent = x.milestones.length ? `${done} of ${x.milestones.length} milestones` : "Drafting milestones";
+  $("msbadge").textContent = x.milestones.length ? `${done}/${x.milestones.length}` : "–";
   $("pbar").style.width = `${pct}%`;
+  $("msn").textContent = x.milestones.length ? `${done} of ${x.milestones.length} milestones verified` : "Agents are drafting milestones";
   clock = {base: x.runtime || 0, at: Date.now() / 1000, running: x.status === "running", since: x.created};
-  $("tok").textContent = `${fmt(x.tokens)} of ${fmt(x.budget)} tokens`;
+  $("runbadge").textContent = words(x.status);
   $("tbar").style.width = `${Math.min(100, x.tokens / x.budget * 100)}%`;
+  $("tok").textContent = `${fmt(x.tokens)} of ${fmt(x.budget)} tokens`;
 
-  $("thought").className = "thought mb-2" + (think ? "" : " text-secondary");
+  $("thought").className = "text-lg leading-relaxed" + (think ? "" : " text-muted-foreground");
   $("thought").textContent = think ? think.text : "Nothing shared yet. Agents keep THOUGHT.md current as they work.";
-  $("tby").textContent = think ? `${swarm ? `agent …${think.by.slice(-4)} · ` : ""}${ago(think.at)}` : "";
+  $("tby").textContent = think ? `${swarm ? `Agent …${think.by.slice(-4)} · ` : ""}${ago(think.at)}` : "What the agent believes right now, and what it is trying next";
   $("tpart").textContent = think && swarm ? think.part : "";
 
-  $("mscount").textContent = x.milestones.length ? `${done} of ${x.milestones.length}` : "";
-  $("ms").innerHTML = x.milestones.map((m, i) => `<div class="list-group-item py-2 d-flex gap-2 ${m.done ? "text-secondary" : i === cur ? "fw-bold" : ""}">
-      <span class="${m.done ? "text-success" : i === cur ? "text-primary" : "text-secondary"}" aria-hidden="true">${m.done ? "✓" : i === cur ? "●" : "○"}</span><span>${esc(m.text)}</span></div>`).join("")
-    || `<div class="list-group-item text-secondary">The agents write milestones first.</div>`;
+  $("mscount").textContent = x.milestones.length ? `${done} of ${x.milestones.length} verified` : "";
+  $("ms").innerHTML = x.milestones.map((m, i) => `<li class="flex gap-3 ${m.done ? "text-muted-foreground" : i === cur ? "font-medium" : ""}">
+      <span class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${m.done ? "border-emerald-500 bg-emerald-500 text-white" : i === cur ? "border-primary" : "border-border"} text-[10px]" aria-hidden="true">${m.done ? "✓" : i === cur ? '<span class="size-2 rounded-full bg-primary"></span>' : ""}</span>
+      <span>${esc(m.text)}</span>${i === cur ? '<span class="badge ml-auto shrink-0" data-variant="secondary">now</span>' : ""}</li>`).join("")
+    || `<li class="text-muted-foreground">The agents write milestones first.</li>`;
 
   document.querySelectorAll(".swarm").forEach(el => el.hidden = !swarm);
-  $("workcol").className = swarm ? "col-lg-8" : "col-lg-7";
+  $("workcol").classList.toggle("lg:col-span-3", !swarm);
   if (swarm) {
-    $("tsub").textContent = tour.rows.length ? `${tour.matches} matches · ${tour.by_eval} by eval score` : "starts after 10 steps of work";
-    $("lb").innerHTML = tour.rows.slice(0, 8).map((r, i) => `<tr data-id="${r.id}" tabindex="0" class="${r.id === agent ? "table-active" : ""}">
-      <td class="text-secondary">${i + 1}</td><td class="text-truncate" style="max-width:280px">${esc(r.hypothesis)}</td>
-      <td>${r.score == null ? '<span class="text-secondary">–</span>' : `<span class="badge bg-green-lt">${esc(+r.score.toFixed(3))}</span>`}</td>
-      <td class="fw-bold">${Math.round(r.elo)}</td><td class="text-secondary">${r.w}-${r.l}-${r.d}</td></tr>`).join("")
-      || `<tr><td colspan="5" class="text-secondary">Agents are rated head-to-head once they have results.</td></tr>`;
+    $("tsub").textContent = tour.rows.length ? `${tour.matches} matches · ${tour.by_eval} decided by eval score` : "Starts once agents have 10 steps of work";
+    $("lb").innerHTML = tour.rows.slice(0, 8).map((r, i) => `<tr data-id="${r.id}" tabindex="0" ${r.id === agent ? 'class="bg-muted"' : ""}>
+      <td class="text-muted-foreground">${i + 1}</td><td class="max-w-64 truncate font-medium">${esc(r.hypothesis)}</td>
+      <td>${r.score == null ? '<span class="text-muted-foreground">–</span>' : `<span class="badge" data-variant="outline">${esc(+r.score.toFixed(3))}</span>`}</td>
+      <td class="text-end tabular-nums">${Math.round(r.elo)}</td><td class="text-end tabular-nums text-muted-foreground">${r.w}-${r.l}-${r.d}</td></tr>`).join("")
+      || `<tr><td colspan="5" class="text-muted-foreground">Agents are rated head-to-head once they have results.</td></tr>`;
     $("asub").textContent = `${x.running} working · ${fmt(x.total)} total`;
     // shortcut: draws the newest 4000 agents as DOM dots, switch to <canvas> if swarms grow past that
     $("dots").innerHTML = kids.slice(0, 4000).map(k => `<button type="button" class="${kind(k.status)} ${k.id === agent ? "sel" : ""}" data-id="${k.id}" title="${esc(k.hypothesis)} · ${esc(k.status)}" aria-label="Agent ${k.id.slice(-4)}, ${esc(k.status)}"></button>`).join("");
   }
-  $("wsub").textContent = swarm ? (followed ? `agent …${followed.id.slice(-4)} · ${followed.hypothesis}` : "pick an agent to follow") : `${x.steps} steps`;
+  $("wsub").textContent = swarm ? (followed ? `Agent …${followed.id.slice(-4)} · ${followed.hypothesis}` : "Pick an agent to follow its work") : `${x.steps} steps`;
   paintClock(); paintTps(); paintGpu();
   const id = swarm ? agent : x.id;
   if (id) await pullLog(id); else $("log").textContent = "";
@@ -229,15 +214,17 @@ $("pick").onchange = () => { sel = $("pick").value; agent = null; off = -1; tick
 function paintClock() {
   if (!clock) return;
   $("clock").textContent = dur(clock.base + (clock.running ? Date.now() / 1000 - clock.at : 0));
-  $("since").textContent = `${clock.running ? "Running" : "Ran"} since ${new Date(clock.since * 1000).toLocaleDateString(undefined, {weekday: "short", month: "short", day: "numeric"})}`;
+  $("since").textContent = `Since ${new Date(clock.since * 1000).toLocaleDateString(undefined, {weekday: "short", month: "short", day: "numeric"})}`;
 }
 setInterval(paintClock, 1000);
-function paintTps() { $("tps").textContent = `${tps >= 100 ? Math.round(tps) : tps.toFixed(1)} tok/s`; }
+function paintTps() { $("tps").textContent = tps >= 100 ? Math.round(tps) : tps.toFixed(1); }
 function paintGpu() {
   const ok = gpus.filter(g => !g.error);
-  $("gpu").innerHTML = !gpus.length ? `<div class="text-secondary small">Waiting for macmon…</div>` : !ok.length ? `<div class="text-secondary small">${esc(gpus[0].error)}</div>`
-    : ok.map(g => `<div class="mb-2"><div class="d-flex small mb-1"><span>${esc(g.host)}</span><span class="ms-auto fw-bold">${g.mhz} MHz</span><span class="text-secondary ms-2">${Math.round(g.active * 100)}%</span></div>
-      <div class="progress progress-sm"><div class="progress-bar bg-success" style="width:${g.active * 100}%" role="progressbar" aria-label="${esc(g.host)} GPU busy" aria-valuenow="${Math.round(g.active * 100)}" aria-valuemin="0" aria-valuemax="100"></div></div></div>`).join("");
+  $("mhz").textContent = ok.length ? Math.round(ok.reduce((a, g) => a + g.mhz, 0) / ok.length) : "–";
+  $("gpubadge").textContent = ok.length > 1 ? `MHz · ${ok.length} Macs` : ok.length ? "MHz" : "off";
+  $("gpu").innerHTML = !ok.length ? `<div class="text-muted-foreground">${esc(gpus[0]?.error || "Waiting for macmon…")}</div>`
+    : ok.map(g => `<div class="grid gap-1"><div class="flex text-muted-foreground"><span>${esc(g.host)}</span><span class="ml-auto tabular-nums">${g.mhz} MHz · ${Math.round(g.active * 100)}%</span></div>
+      <div class="progress" role="progressbar" aria-label="${esc(g.host)} GPU busy" aria-valuenow="${Math.round(g.active * 100)}" aria-valuemin="0" aria-valuemax="100"><span style="width:${g.active * 100}%"></span></div></div>`).join("");
 }
 
 async function pullLog(id) {
@@ -253,15 +240,15 @@ async function engine() {
   const [s, g] = await Promise.all([get("/status"), get("/gpu")]);
   gpus = g; if (sel) paintGpu();
   const act = s.adapters.find(a => a.active), on = s.up || s.source !== "local";
-  $("dot").className = "status-dot " + (on ? "status-dot-animated bg-green" : "bg-red");
+  $("dot").className = "inline-block size-2 rounded-full " + (on ? "bg-emerald-500" : "bg-destructive");
   $("engine").textContent = s.source === "local"
     ? `${(s.models[0] || s.base_model).split("/").pop()}${act ? ` + ${act.name}` : ""}${s.hosts ? ` · ${s.hosts.hosts.length} Macs` : ""}${s.up ? "" : " · off"}`
     : `${s.model} · API`;
   if (!$("settings").open) return;
   $("engState").textContent = s.up ? "· running" : "· stopped";
-  $("adapters").innerHTML = s.adapters.map(a => `<tr><td>${esc(a.name)}</td><td class="text-secondary">${esc(a.status)}</td><td class="text-secondary">loss ${a.base_loss ?? "–"} → ${a.test_loss ?? "–"}</td>
-      <td class="text-end">${a.active ? `<span class="badge bg-green-lt me-2">active</span><button class="btn btn-sm" type="button" data-adopt="none">Roll back</button>` : a.status === "trained" ? `<button class="btn btn-sm btn-primary" type="button" data-adopt="${esc(a.name)}">Adopt</button>` : ""}</td></tr>`).join("")
-    || `<tr><td class="text-secondary">None yet. Agents train adapters with the finetune tool.</td></tr>`;
+  $("adapters").innerHTML = s.adapters.map(a => `<tr><td class="font-medium">${esc(a.name)}</td><td class="text-muted-foreground">${esc(a.status)}</td><td class="tabular-nums text-muted-foreground">${a.base_loss ?? "–"} → ${a.test_loss ?? "–"}</td>
+      <td class="text-end">${a.active ? `<span class="badge mr-2" data-variant="secondary">active</span><button class="btn" data-variant="outline" data-size="sm" type="button" data-adopt="none">Roll back</button>` : a.status === "trained" ? `<button class="btn" data-size="sm" type="button" data-adopt="${esc(a.name)}">Adopt</button>` : ""}</td></tr>`).join("")
+    || `<tr><td class="text-muted-foreground">None yet. Agents train adapters with the finetune tool.</td></tr>`;
   $("elog").textContent = (s.serve_log + s.setup_log).slice(-2500) || "No engine output yet.";
 }
 
@@ -283,7 +270,6 @@ $("new").onsubmit = async e => {
   if (r.ok) { $("goal").value = ""; sel = (await r.json()).id; agent = null; tick(); }
 };
 $("gear").onclick = openSettings;
-$("closeSet").onclick = () => $("settings").close();
 document.querySelectorAll("input[name=src]").forEach(r => r.onchange = () => $("apiRows").hidden = r.value !== "api" || !r.checked);
 $("saveSrc").onclick = async () => {
   const api = document.querySelector("input[name=src]:checked").value === "api";
