@@ -4,182 +4,141 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Horizon</title>
+<!-- Tabler (MIT, tabler.io): the dashboard's whole look comes from its stock components -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.6.1/dist/css/tabler.min.css">
+<script>document.documentElement.dataset.bsTheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";</script>
 <style>
-:root {
-  --page: #e4e6eb; --page2: #d7dae1; --tile: rgb(255 255 255 / .8); --edge: rgb(0 0 0 / .06);
-  --ink: #1d1d1f; --sub: #5c5c61; --faint: #c7c7cc; --fill: rgb(120 120 128 / .14);
-  --blue: #007aff; --green: #248a3d; --ring: #34c759; --orange: #c93400; --indigo: #5856d6; --red: #d70015; --teal: #0071a4; --yellow: #a05a00;
-  --text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-  --round: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, monospace;
-  --shadow: 0 1px 1px rgb(0 0 0 / .03), 0 6px 20px rgb(0 0 0 / .07);
-}
-@media (prefers-color-scheme: dark) {
-  :root { --page: #121214; --page2: #1b1b1f; --tile: rgb(44 44 48 / .78); --edge: rgb(255 255 255 / .07);
-          --ink: #f5f5f7; --sub: #98989f; --faint: #48484c; --fill: rgb(120 120 128 / .24);
-          --blue: #4da3ff; --green: #30d158; --ring: #30d158; --orange: #ff9f0a; --indigo: #7d7aff; --red: #ff453a; --teal: #64d2ff; --yellow: #ffd60a;
-          --shadow: 0 1px 1px rgb(0 0 0 / .2), 0 10px 30px rgb(0 0 0 / .35); }
-}
-* { box-sizing: border-box; }
-html { background: linear-gradient(160deg, var(--page), var(--page2)) fixed; min-height: 100%; }
-body { margin: 0; color: var(--ink); font: 14px/1.4 var(--text); -webkit-font-smoothing: antialiased; }
-button, input { font: inherit; color: inherit; }
-button { cursor: pointer; }
-:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
-.wrap { max-width: 1040px; margin: 0 auto; padding: 22px 24px 64px; }
-
-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
-.brand { font: 700 22px/1 var(--round); letter-spacing: -.01em; }
-.pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; background: var(--tile); border: .5px solid var(--edge); box-shadow: var(--shadow); color: var(--sub); font-size: 13px; }
-.pill b { color: var(--ink); font-weight: 600; }
-.led { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
-.led.on { background: var(--ring); }
-.gear { border: 0; background: none; padding: 0 0 0 4px; color: var(--sub); font-size: 15px; }
-
-form.ask { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 18px; border-radius: 18px; background: var(--tile); border: .5px solid var(--edge); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
-form.ask:focus-within { box-shadow: var(--shadow), 0 0 0 3px rgb(0 122 255 / .25); }
-.ask #goal { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 17px; padding: 6px 0; }
-.ask #goal::placeholder { color: var(--sub); }
-.chips { display: flex; gap: 6px; align-items: center; }
-.chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 9px; background: var(--fill); color: var(--sub); font-size: 12px; }
-.chip input { width: 3.2em; border: 0; background: none; outline: none; color: var(--ink); font-weight: 600; text-align: right; padding: 0; }
-.chip.repo input { width: 9em; text-align: left; font-weight: 500; }
-.go { border: 0; border-radius: 12px; background: #0071e3; color: #fff; font-weight: 600; padding: 9px 16px; }
-
-nav.research { display: flex; gap: 8px; overflow-x: auto; padding: 16px 2px 4px; scrollbar-width: none; }
-.tab { display: inline-flex; align-items: center; gap: 9px; flex-shrink: 0; max-width: 320px; padding: 7px 14px 7px 8px; border-radius: 999px; border: .5px solid var(--edge); background: var(--tile); box-shadow: var(--shadow); text-align: left; }
-.tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.tab small { color: var(--sub); font: 600 12px var(--round); }
-.tab[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: transparent; }
-.tab[aria-pressed="true"] small { color: var(--page); opacity: .7; }
-
-.grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 172px; gap: 16px; margin-top: 16px; }
-.w { position: relative; overflow: hidden; border-radius: 22px; padding: 15px 16px; background: var(--tile); border: .5px solid var(--edge); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); display: flex; flex-direction: column; min-width: 0; }
-.w.m { grid-column: span 2; } .w.l { grid-column: span 2; grid-row: span 2; } .w.xl { grid-column: span 4; grid-row: span 2; } .w.tall { grid-row: span 2; }
-.lab { font-size: 13px; font-weight: 600; display: flex; gap: 6px; align-items: baseline; white-space: nowrap; }
-.lab .s { color: var(--sub); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
-.big { font: 600 44px/1 var(--round); letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: auto; }
-.big small { font-size: 15px; font-weight: 600; color: var(--sub); letter-spacing: 0; margin-left: 3px; }
-.foot { color: var(--sub); font-size: 12px; margin-top: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.ringbox { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
-.ringbox .big { margin: 0; }
-.ring circle { fill: none; stroke-linecap: round; }
-.ring .tr { stroke: var(--fill); }
-.ring .bar { stroke: var(--ring); transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1); }
-
-.thought { margin-top: 10px; font: 500 17px/1.38 var(--text); letter-spacing: -.005em; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-.thought.none { color: var(--sub); font-weight: 400; }
-
-ul.ms { list-style: none; margin: 10px 0 0; padding: 0; overflow: auto; flex: 1; }
-ul.ms li { display: grid; grid-template-columns: 20px 1fr; gap: 8px; padding: 6px 0; border-top: .5px solid var(--fill); font-size: 13.5px; }
-ul.ms li:first-child { border-top: 0; }
-ul.ms .c { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid var(--faint); margin-top: 1px; display: grid; place-items: center; font-size: 10px; color: #fff; }
-ul.ms li.done .c { background: var(--ring); border-color: var(--ring); }
-ul.ms li.done { color: var(--sub); }
-ul.ms li.now .c { border-color: var(--blue); box-shadow: inset 0 0 0 3px var(--tile), inset 0 0 0 9px var(--blue); }
-ul.ms li.now { font-weight: 600; }
-.empty { color: var(--sub); margin-top: auto; font-size: 13px; }
-
-.spark { width: 100%; height: 34px; margin-top: 8px; }
-.mac { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 8px; font-size: 12px; }
-.mac b { font: 600 20px var(--round); font-variant-numeric: tabular-nums; }
-.cap { grid-column: span 2; height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; }
-.cap i { display: block; height: 100%; border-radius: 3px; background: var(--ring); transition: width .6s; }
-
-table.lb { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
-table.lb td { padding: 6px 0; border-top: .5px solid var(--fill); white-space: nowrap; }
-table.lb tr:first-child td { border-top: 0; }
-table.lb td.d { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
-table.lb td.r { color: var(--sub); width: 26px; padding-right: 6px; font-weight: 600; }
-table.lb td.e { font: 600 13px var(--round); text-align: right; padding-left: 8px; }
-table.lb td.k { text-align: right; }
-.sc { display: inline-block; min-width: 46px; text-align: center; padding: 2px 6px; border-radius: 6px; background: var(--fill); font: 600 12px var(--round); }
-table.lb tbody tr { cursor: pointer; } table.lb tbody tr:hover td, table.lb tr.sel td { color: var(--blue); }
-
-.dots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; overflow: auto; align-content: flex-start; flex: 1; }
-.dots button { width: 10px; height: 10px; border-radius: 3px; border: 0; padding: 0; background: var(--fill); }
-.dots .running { background: var(--blue); } .dots .done { background: var(--ring); } .dots .bad { background: var(--red); } .dots .queued { background: var(--faint); }
-.dots .sel { outline: 2px solid var(--ink); outline-offset: 1px; }
-.legend { display: flex; gap: 12px; font-size: 11.5px; color: var(--sub); margin-top: 8px; }
-.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
-
-#wsub { padding-right: 76px; }
-#engine { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 62vw; }
-.acts { position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; }
-.mini { border: 0; border-radius: 8px; padding: 4px 10px; background: var(--fill); color: var(--ink); font-size: 12px; font-weight: 600; }
-pre.log { margin: 10px 0 0; flex: 1; overflow: auto; font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--ink); }
-.a2 { color: var(--sub); } .a36 { color: var(--blue); } .a35 { color: var(--orange); }
-
-.welcome { grid-column: span 4; grid-row: span 2; justify-content: center; align-items: flex-start; padding: 32px; }
-.welcome h1 { font: 700 34px/1.1 var(--round); margin: 0 0 8px; letter-spacing: -.02em; }
-.welcome p { color: var(--sub); max-width: 46ch; margin: 0; font-size: 15px; }
-
-dialog { border: .5px solid var(--edge); border-radius: 16px; background: var(--page); color: var(--ink); padding: 0; width: min(560px, calc(100vw - 24px)); box-shadow: 0 30px 80px rgb(0 0 0 / .35); }
-dialog::backdrop { background: rgb(0 0 0 / .25); }
-.sheet { padding: 18px 20px 20px; }
-.sheet h2 { font: 700 17px var(--text); margin: 0 0 14px; display: flex; justify-content: space-between; align-items: center; }
-.group { background: var(--tile); border-radius: 12px; border: .5px solid var(--edge); margin-bottom: 16px; overflow: hidden; }
-.group h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--sub); margin: 14px 0 6px 4px; }
-.fr { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: .5px solid var(--fill); font-size: 13.5px; }
-.fr:first-child { border-top: 0; }
-.fr > span:first-child { width: 110px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fr input[type=text], .fr input[type=password], .fr input:not([type]) { flex: 1; min-width: 0; border: 0; background: none; outline: none; text-align: right; color: var(--sub); }
-.fr input:focus { color: var(--ink); }
-.seg { display: inline-flex; background: var(--fill); border-radius: 8px; padding: 2px; margin-left: auto; }
-.seg button { border: 0; background: none; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink); }
-.seg button[aria-pressed="true"] { background: var(--tile); box-shadow: 0 1px 3px rgb(0 0 0 / .15); }
-.fr .mini.blue { background: #0071e3; color: #fff; }
-.note { color: var(--sub); font-size: 12px; padding: 0 4px; }
-pre.elog { margin: 0; max-height: 120px; overflow: auto; font: 11px/1.5 var(--mono); color: var(--sub); white-space: pre-wrap; padding: 10px 14px; }
-
-@media (max-width: 860px) { .grid { grid-template-columns: repeat(2, 1fr); } .w.xl, .welcome { grid-column: span 2; } .chip.repo { display: none; } }
-@media (max-width: 520px) { .thought { font-size: 15px; -webkit-line-clamp: 3; } .wrap { padding: 14px 14px 48px; } .grid { gap: 12px; grid-auto-rows: 158px; } .chips .chip:not(.repo) { display: none; } .big { font-size: 38px; } }
-@media (prefers-reduced-motion: reduce) { .ring .bar, .cap i { transition: none; } }
+/* only what Tabler has no component for */
+.dots { display: flex; flex-wrap: wrap; gap: 4px; max-height: 196px; overflow: auto; }
+.dots button { width: 10px; height: 10px; border: 0; padding: 0; border-radius: 2px; background: var(--tblr-border-color); }
+.dots .running { background: var(--tblr-primary); } .dots .done { background: var(--tblr-success); }
+.dots .bad { background: var(--tblr-danger); } .dots .queued { background: var(--tblr-secondary); opacity: .4; }
+.dots .sel { outline: 2px solid var(--tblr-body-color); outline-offset: 1px; }
+.log { height: 340px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+.a2 { color: var(--tblr-secondary); } .a36 { color: var(--tblr-primary); } .a35 { color: var(--tblr-warning); }
+.thought { font-size: 1.15rem; line-height: 1.5; }
+dialog { border: 0; padding: 0; background: transparent; width: min(620px, calc(100vw - 24px)); }
+dialog::backdrop { background: rgb(0 0 0 / .35); }
+tr[data-id] { cursor: pointer; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <div class="brand">Horizon</div>
-    <div class="pill" id="pill"><span class="led" id="led"></span><span id="engine">Engine off</span><button class="gear" id="gear" type="button" aria-label="Settings">⚙︎</button></div>
+<div class="page">
+  <header class="navbar navbar-expand-md d-print-none">
+    <div class="container-xl">
+      <div class="navbar-brand pe-3">Horizon</div>
+      <div class="navbar-nav flex-row order-md-last align-items-center gap-3">
+        <span class="d-flex align-items-center gap-2 text-secondary small"><span class="status-dot" id="dot"></span><span id="engine">Engine off</span></span>
+        <button class="btn btn-sm" type="button" id="gear">Settings</button>
+      </div>
+    </div>
   </header>
 
-  <form class="ask" id="new">
-    <input id="goal" placeholder="What should the lab find out?" aria-label="Research goal" autocomplete="off">
-    <div class="chips">
-      <label class="chip">Agents <input id="agents" value="16" inputmode="numeric" aria-label="Agents"></label>
-      <label class="chip">Budget <input id="budget" value="10B" aria-label="Token budget"></label>
-      <label class="chip repo">Repo <input id="repo" placeholder="optional" aria-label="Git repo"></label>
+  <div class="page-wrapper">
+    <div class="page-header d-print-none">
+      <div class="container-xl">
+        <form class="card" id="new">
+          <div class="card-body">
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-lg"><label class="form-label" for="goal">New research</label><input class="form-control" id="goal" placeholder="What should the lab find out?" autocomplete="off"></div>
+              <div class="col-4 col-lg-1"><label class="form-label" for="agents">Agents</label><input class="form-control" id="agents" value="16" inputmode="numeric"></div>
+              <div class="col-4 col-lg-1"><label class="form-label" for="budget">Budget</label><input class="form-control" id="budget" value="10B"></div>
+              <div class="col-4 col-lg-2"><label class="form-label" for="repo">Git repo</label><input class="form-control" id="repo" placeholder="optional"></div>
+              <div class="col-12 col-lg-auto"><button class="btn btn-primary w-100">Start research</button></div>
+            </div>
+          </div>
+        </form>
+        <div class="row g-2 align-items-center mt-3" id="head" hidden>
+          <div class="col"><div class="page-pretitle" id="pre"></div><h2 class="page-title" id="title"></h2></div>
+          <div class="col-12 col-md-auto ms-auto d-flex gap-2">
+            <select class="form-select" id="pick" aria-label="Research"></select>
+            <span id="acts"></span>
+          </div>
+        </div>
+      </div>
     </div>
-    <button class="go">Start</button>
-  </form>
 
-  <nav class="research" id="tabs" aria-label="Research"></nav>
-  <main class="grid" id="grid"></main>
+    <div class="page-body">
+      <div class="container-xl" id="body">
+        <div class="empty" id="empty">
+          <p class="empty-title">No research yet</p>
+          <p class="empty-subtitle text-secondary">Ask a question above. Agents plan milestones, run experiments in their own VMs, curate a wiki and keep going until the budget runs out.</p>
+        </div>
+        <div class="row row-deck row-cards" id="cards" hidden>
+          <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body">
+            <div class="subheader">How close</div><div class="h1 mb-3" id="pct"></div>
+            <div class="d-flex mb-2 small"><span id="msn"></span></div>
+            <div class="progress progress-sm"><div class="progress-bar bg-success" id="pbar" role="progressbar" aria-label="Milestones done"></div></div>
+          </div></div></div>
+          <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body">
+            <div class="subheader">Runtime</div><div class="h1 mb-3" id="clock"></div>
+            <div class="small text-secondary" id="since"></div>
+          </div></div></div>
+          <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body">
+            <div class="subheader">Throughput</div><div class="h1 mb-3" id="tps"></div>
+            <div class="d-flex mb-2 small"><span id="tok"></span></div>
+            <div class="progress progress-sm"><div class="progress-bar bg-primary" id="tbar" role="progressbar" aria-label="Token budget used"></div></div>
+          </div></div></div>
+          <div class="col-sm-6 col-lg-3"><div class="card"><div class="card-body">
+            <div class="subheader mb-2">GPU</div><div id="gpu"></div>
+          </div></div></div>
+
+          <div class="col-12"><div class="card">
+            <div class="card-header"><h3 class="card-title">Train of thought</h3><div class="card-actions small text-secondary" id="tby"></div></div>
+            <div class="card-body"><p class="thought mb-2" id="thought"></p><div class="small text-secondary" id="tpart"></div></div>
+          </div></div>
+
+          <div class="col-lg-5"><div class="card">
+            <div class="card-header"><h3 class="card-title">Milestones</h3><div class="card-actions small text-secondary" id="mscount"></div></div>
+            <div class="list-group list-group-flush" id="ms"></div>
+          </div></div>
+          <div class="col-lg-7 swarm"><div class="card">
+            <div class="card-header"><h3 class="card-title">Tournament</h3><div class="card-actions small text-secondary" id="tsub"></div></div>
+            <div class="table-responsive"><table class="table card-table table-vcenter">
+              <thead><tr><th class="w-1">#</th><th>Direction</th><th>Score</th><th>Elo</th><th>W-L-D</th></tr></thead><tbody id="lb"></tbody></table></div>
+          </div></div>
+
+          <div class="col-lg-4 swarm"><div class="card">
+            <div class="card-header"><h3 class="card-title">Agents</h3><div class="card-actions small text-secondary" id="asub"></div></div>
+            <div class="card-body d-flex flex-column">
+              <div class="dots" id="dots" aria-label="Agents"></div>
+              <div class="d-flex gap-3 small text-secondary mt-auto pt-3">
+                <span class="d-flex align-items-center gap-1"><span class="status-dot status-dot-animated bg-primary"></span>working</span>
+                <span class="d-flex align-items-center gap-1"><span class="status-dot bg-success"></span>done</span>
+                <span class="d-flex align-items-center gap-1"><span class="status-dot bg-danger"></span>stopped</span>
+              </div>
+            </div>
+          </div></div>
+          <div class="col-lg-8" id="workcol"><div class="card">
+            <div class="card-header"><h3 class="card-title">Work</h3><div class="card-actions small text-secondary text-truncate" style="max-width:60%" id="wsub"></div></div>
+            <div class="card-body"><pre class="log" id="log" tabindex="0"></pre></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
-<dialog id="settings"><div class="sheet">
-  <h2>Settings <button class="mini" type="button" id="closeSet">Done</button></h2>
-  <h3 class="group-title note">MODEL</h3>
-  <div class="group">
-    <div class="fr"><span>Source</span><div class="seg" role="group" aria-label="Model source"><button type="button" data-src="local" aria-pressed="true">This Mac</button><button type="button" data-src="api" aria-pressed="false">API key</button></div></div>
+<dialog id="settings"><div class="card">
+  <div class="card-header"><h3 class="card-title">Settings</h3><div class="card-actions"><button class="btn btn-sm" type="button" id="closeSet">Done</button></div></div>
+  <div class="card-body">
+    <div class="mb-3"><div class="form-label">Model source</div>
+      <label class="form-check form-check-inline"><input class="form-check-input" type="radio" name="src" value="local" checked><span class="form-check-label">This Mac</span></label>
+      <label class="form-check form-check-inline"><input class="form-check-input" type="radio" name="src" value="api"><span class="form-check-label">API key</span></label></div>
     <div id="apiRows" hidden>
-      <div class="fr"><span>Endpoint</span><input id="url" placeholder="https://openrouter.ai/api/v1/chat/completions"></div>
-      <div class="fr"><span>Key</span><input id="key" type="password" placeholder="Stored on this Mac only" autocomplete="off"></div>
-      <div class="fr"><span>Model</span><input id="model" placeholder="Model ID"></div>
+      <div class="mb-2"><label class="form-label" for="url">Endpoint</label><input class="form-control" id="url" placeholder="https://openrouter.ai/api/v1/chat/completions"></div>
+      <div class="mb-2"><label class="form-label" for="key">Key</label><input class="form-control" id="key" type="password" autocomplete="off"></div>
+      <div class="mb-2"><label class="form-label" for="model">Model</label><input class="form-control" id="model"></div>
     </div>
-    <div class="fr"><span id="srcMsg" class="note" style="width:auto"></span><button class="mini blue" type="button" id="saveSrc" style="margin-left:auto">Save</button></div>
+    <div class="d-flex align-items-center gap-2 mb-4"><button class="btn btn-primary btn-sm" type="button" id="saveSrc">Save</button><span class="small text-secondary" id="srcMsg"></span></div>
+    <div class="mb-2"><label class="form-label" for="smodel">Local engine <span class="text-secondary fw-normal" id="engState"></span></label>
+      <div class="input-group"><input class="form-control" id="smodel"><button class="btn btn-primary" type="button" id="serve">Start</button><button class="btn" type="button" id="halt">Stop</button></div></div>
+    <div class="mb-4"><label class="form-label" for="hosts">Pair Macs (optional)</label>
+      <div class="input-group"><input class="form-control" id="hosts" placeholder="studio1.local,studio2.local"><button class="btn" type="button" id="pair">Pair</button></div></div>
+    <div class="form-label">Adapters the agents trained</div>
   </div>
-  <h3 class="note">LOCAL ENGINE</h3>
-  <div class="group">
-    <div class="fr"><span>Base model</span><input id="smodel" placeholder="mlx-community/Qwen3.8-27B-8bit"></div>
-    <div class="fr"><span>Engine</span><span class="note" id="engState" style="width:auto"></span><span style="margin-left:auto;display:flex;gap:6px"><button class="mini blue" type="button" id="serve">Start</button><button class="mini" type="button" id="halt">Stop</button></span></div>
-    <div class="fr"><span>Pair Macs</span><input id="hosts" placeholder="studio1.local,studio2.local"><button class="mini" type="button" id="pair">Pair</button></div>
-    <pre class="elog" id="elog"></pre>
-  </div>
-  <h3 class="note">ADAPTERS THE AGENTS TRAINED</h3>
-  <div class="group" id="adapters"></div>
+  <div class="table-responsive"><table class="table card-table table-vcenter"><tbody id="adapters"></tbody></table></div>
+  <div class="card-footer"><pre class="log mb-0 text-secondary" id="elog" style="height:110px"></pre></div>
 </div></dialog>
 
 <script>
@@ -192,36 +151,23 @@ const ansi = s => esc(s).replace(/\x1b\[(\d+)m/g, (_, n) => n === "0" ? "</span>
 const fmt = n => n >= 1e9 ? (n / 1e9).toFixed(1) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(Math.round(n));
 const parseN = s => { const m = String(s).trim().match(/^([\d.]+)\s*([kmb]?)$/i); return m ? m[1] * {"": 1, k: 1e3, m: 1e6, b: 1e9}[m[2].toLowerCase()] : NaN; };
 const pad = n => String(Math.floor(n)).padStart(2, "0");
-const dur = s => s >= 86400 ? [`${Math.floor(s / 86400)}`, "d", `${Math.floor(s % 86400 / 3600)}h ${pad(s % 3600 / 60)}m`]
-  : s >= 3600 ? [`${Math.floor(s / 3600)}`, "h", `${pad(s % 3600 / 60)}m ${pad(s % 60)}s`] : [`${Math.floor(s / 60)}`, "m", `${pad(s % 60)}s`];
+const dur = s => s >= 86400 ? `${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h` : s >= 3600 ? `${Math.floor(s / 3600)}h ${pad(s % 3600 / 60)}m` : `${Math.floor(s / 60)}m ${pad(s % 60)}s`;
 const ago = t => { const s = Date.now() / 1000 - t; return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
 const kind = s => s === "running" ? "running" : s === "done" ? "done" : s === "queued" ? "queued" : /kill|fail|error|crash/.test(s) ? "bad" : "";
-const words = x => x.status === "running" ? "Working" : x.status === "queued" ? "Starting" : x.status === "done" ? "Finished" : x.status.startsWith("killed") ? "Stopped by reviewer" : x.status[0].toUpperCase() + x.status.slice(1);
+const words = s => s === "running" ? "Running" : s === "queued" ? "Starting" : s === "done" ? "Finished" : s.startsWith("killed") ? "Stopped by reviewer" : s[0].toUpperCase() + s.slice(1);
 
-function ring(p, size, w) {
-  const r = 50 - w / 2 - 1, c = 2 * Math.PI * r;
-  return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true"><circle class="tr" cx="50" cy="50" r="${r}" stroke-width="${w}"/>
-    <circle class="bar" cx="50" cy="50" r="${r}" stroke-width="${w}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.min(1, p))}"/></svg>`;
-}
-
-let sel = null, agent = null, off = -1, items = [], last = {}, lastT = 0, tps = 0, hist = [], clock = null, gpus = [];
+let sel = null, agent = null, off = -1, last = {}, lastT = 0, tps = 0, clock = null, gpus = [];
 
 async function tick() {
   const [swarms, runs] = await Promise.all([get("/projects"), get("/runs")]);
-  items = [...swarms, ...runs].sort((a, b) => (b.created || 0) - (a.created || 0));
-  const now = Date.now() / 1000;
-  if (lastT) { tps = items.reduce((a, x) => a + (last[x.id] != null ? Math.max(0, x.tokens - last[x.id]) : 0), 0) / (now - lastT); hist = [...hist, tps].slice(-60); }
+  const items = [...swarms, ...runs].sort((a, b) => (b.created || 0) - (a.created || 0)), now = Date.now() / 1000;
+  if (lastT) tps = items.reduce((a, x) => a + (last[x.id] != null ? Math.max(0, x.tokens - last[x.id]) : 0), 0) / (now - lastT);
   last = Object.fromEntries(items.map(x => [x.id, x.tokens])); lastT = now;
   if (!items.some(x => x.id === sel)) { sel = items[0]?.id ?? null; agent = null; off = -1; }
-  $("tabs").innerHTML = items.map(x => `<button class="tab" type="button" data-id="${x.id}" aria-pressed="${x.id === sel}">
-    ${ring(x.progress, 22, 16)}<span>${esc(x.goal || x.hypothesis)}</span><small>${Math.round(x.progress * 100)}%</small></button>`).join("");
-  const x = items.find(x => x.id === sel);
-  x ? await render(x) : welcome();
-}
-
-function welcome() {
-  $("grid").innerHTML = `<section class="w welcome"><h1>Ask the lab anything.</h1>
-    <p>Type a hypothesis above. Agents plan milestones, run experiments in their own VMs, curate a wiki, and keep going for as long as the budget lasts.</p></section>`;
+  $("empty").hidden = !!sel; $("cards").hidden = $("head").hidden = !sel;
+  if (!sel) return;
+  $("pick").innerHTML = items.map(x => `<option value="${x.id}" ${x.id === sel ? "selected" : ""}>${esc((x.goal || x.hypothesis).slice(0, 60))} · ${Math.round(x.progress * 100)}%</option>`).join("");
+  await render(items.find(x => x.id === sel));
 }
 
 async function render(x) {
@@ -230,108 +176,68 @@ async function render(x) {
   const followed = swarm ? kids.find(k => k.id === agent) : x;
   const think = followed?.thought ? {text: followed.thought, at: followed.thought_at, by: followed.id, part: followed.hypothesis}
     : x.thought ? {text: x.thought, at: x.thought_at, by: x.thought_by, part: x.thought_part} : null;
-  const done = x.milestones.filter(m => m.done).length, cur = x.milestones.findIndex(m => !m.done);
+  const done = x.milestones.filter(m => m.done).length, cur = x.milestones.findIndex(m => !m.done), pct = Math.round(x.progress * 100);
+
+  $("pre").textContent = `${swarm ? "Swarm" : "Run"} · ${words(x.status)}`;
+  $("title").textContent = x.goal || x.hypothesis;
+  $("acts").innerHTML = x.status === "running" ? `<button class="btn" type="button" data-act="stop">Stop</button>`
+    : !x.status.startsWith("killed") && x.status !== "queued" ? `<button class="btn btn-primary" type="button" data-act="continue">Continue</button>` : "";
+  $("acts").onclick = e => { const a = e.target.dataset.act; if (a) post(`/${swarm ? "projects" : "runs"}/${x.id}/${a}`); };
+
+  $("pct").textContent = `${pct}%`;
+  $("msn").textContent = x.milestones.length ? `${done} of ${x.milestones.length} milestones` : "Drafting milestones";
+  $("pbar").style.width = `${pct}%`;
   clock = {base: x.runtime || 0, at: Date.now() / 1000, running: x.status === "running", since: x.created};
+  $("tok").textContent = `${fmt(x.tokens)} of ${fmt(x.budget)} tokens`;
+  $("tbar").style.width = `${Math.min(100, x.tokens / x.budget * 100)}%`;
 
-  if ($("grid").dataset.id !== x.id) {
-    $("grid").dataset.id = x.id; off = -1;
-    $("grid").innerHTML = `
-      <section class="w" aria-label="How close"><div class="lab" style="color:var(--green)">How close</div>
-        <div class="ringbox"><div class="big" id="pct"></div><span id="bring"></span></div><div class="foot" id="msfoot"></div></section>
-      <section class="w" aria-label="Runtime"><div class="lab"><span style="color:var(--orange)" id="rstate"></span><span class="s" id="rsince"></span></div>
-        <div class="big" id="rbig"></div><div class="foot" id="rsmall"></div></section>
-      <section class="w m" aria-label="Train of thought"><div class="lab"><span style="color:var(--indigo)">Thinking</span><span class="s" id="tby"></span></div>
-        <div class="thought" id="thought"></div><div class="foot" id="tpart" style="margin-top:auto"></div></section>
-      <section class="w m tall" aria-label="Milestones"><div class="lab"><span style="color:var(--blue)">Milestones</span><span class="s" id="mscount"></span></div><ul class="ms" id="ms"></ul></section>
-      <section class="w" aria-label="Throughput"><div class="lab"><span style="color:var(--teal)">Throughput</span></div>
-        <div class="big" id="tps"></div><svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path id="sfill" fill="var(--teal)" opacity=".15"/><polyline id="sline" fill="none" stroke="var(--teal)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg></section>
-      <section class="w" aria-label="Tokens"><div class="lab"><span style="color:var(--indigo)">Tokens</span><span class="s" id="ksub"></span></div>
-        <div class="big" id="kbig"></div><div class="mac"><span class="foot" id="kfoot" style="margin:0"></span><span></span><span class="cap"><i id="kcap" style="background:var(--indigo)"></i></span></div></section>
-      <section class="w" aria-label="${swarm ? "Best score" : "Steps"}"><div class="lab"><span style="color:var(--yellow)">${swarm ? "Best score" : "Steps"}</span></div>
-        <div class="big" id="bbig"></div><div class="foot" id="bfoot"></div></section>
-      <section class="w" aria-label="GPU"><div class="lab"><span style="color:var(--green)">GPU</span><span class="s" id="gsub"></span></div><div id="gpu" style="margin-top:auto"></div></section>
-      ${swarm ? `
-      <section class="w l" aria-label="Tournament"><div class="lab"><span style="color:var(--yellow)">Tournament</span><span class="s" id="tsub"></span></div>
-        <table class="lb"><tbody id="lb"></tbody></table></section>
-      <section class="w l" aria-label="Agents"><div class="lab"><span style="color:var(--green)">Agents</span><span class="s" id="asub"></span></div>
-        <div class="dots" id="dots"></div>
-        <div class="legend"><span><i style="background:var(--blue)"></i>working</span><span><i style="background:var(--ring)"></i>done</span><span><i style="background:var(--red)"></i>stopped</span><span><i style="background:var(--faint)"></i>starting</span></div></section>` : ""}
-      <section class="w xl" aria-label="Work"><div class="lab"><span>Work</span><span class="s" id="wsub"></span></div>
-        <div class="acts" id="acts"></div><pre class="log" id="log" tabindex="0"></pre></section>`;
-    if (swarm) {
-      $("dots").onclick = e => { const b = e.target.closest("button"); if (b) follow(b.dataset.id); };
-      $("lb").onclick = e => { const r = e.target.closest("tr"); if (r) follow(r.dataset.id); };
-      $("lb").onkeydown = e => { const r = e.target.closest("tr"); if (r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); follow(r.dataset.id); } };
-    }
-    $("acts").onclick = e => { const a = e.target.dataset.act; if (a) post(`/${swarm ? "projects" : "runs"}/${x.id}/${a}`); };
-  }
-
-  $("pct").innerHTML = `${Math.round(x.progress * 100)}<small>%</small>`;
-  $("bring").innerHTML = ring(x.progress, 76, 13);
-  $("msfoot").textContent = x.milestones.length ? `${done} of ${x.milestones.length} milestones` : "Drafting milestones";
-  $("mscount").textContent = x.milestones.length ? `${done} of ${x.milestones.length}` : "";
-  $("ms").innerHTML = x.milestones.map((m, i) => `<li class="${m.done ? "done" : i === cur ? "now" : ""}"><span class="c">${m.done ? "✓" : ""}</span><span>${esc(m.text)}</span></li>`).join("")
-    || `<li style="border:0"><span></span><span class="empty">The agents write milestones as their first job.</span></li>`;
-  $("thought").className = "thought" + (think ? "" : " none");
-  $("thought").textContent = think ? think.text : "No thoughts shared yet. Agents keep THOUGHT.md current as they work.";
-  $("tby").textContent = think ? `${swarm ? "agent …" + think.by.slice(-4) + " · " : ""}${ago(think.at)}` : "";
+  $("thought").className = "thought mb-2" + (think ? "" : " text-secondary");
+  $("thought").textContent = think ? think.text : "Nothing shared yet. Agents keep THOUGHT.md current as they work.";
+  $("tby").textContent = think ? `${swarm ? `agent …${think.by.slice(-4)} · ` : ""}${ago(think.at)}` : "";
   $("tpart").textContent = think && swarm ? think.part : "";
-  $("acts").innerHTML = x.status === "running" ? `<button class="mini" type="button" data-act="stop">Stop</button>`
-    : !x.status.startsWith("killed") && x.status !== "queued" ? `<button class="mini" type="button" data-act="continue">Continue</button>` : "";
-  $("wsub").textContent = swarm ? (followed ? `agent …${followed.id.slice(-4)} · ${followed.hypothesis}` : "pick an agent to follow its work") : `${fmt(x.tokens)} of ${fmt(x.budget)} tokens`;
+
+  $("mscount").textContent = x.milestones.length ? `${done} of ${x.milestones.length}` : "";
+  $("ms").innerHTML = x.milestones.map((m, i) => `<div class="list-group-item py-2 d-flex gap-2 ${m.done ? "text-secondary" : i === cur ? "fw-bold" : ""}">
+      <span class="${m.done ? "text-success" : i === cur ? "text-primary" : "text-secondary"}" aria-hidden="true">${m.done ? "✓" : i === cur ? "●" : "○"}</span><span>${esc(m.text)}</span></div>`).join("")
+    || `<div class="list-group-item text-secondary">The agents write milestones first.</div>`;
+
+  document.querySelectorAll(".swarm").forEach(el => el.hidden = !swarm);
+  $("workcol").className = swarm ? "col-lg-8" : "col-lg-7";
   if (swarm) {
-    $("tsub").textContent = tour.rows.length ? `${tour.matches} matches` : "starts after 10 steps of work";
-    $("lb").innerHTML = tour.rows.slice(0, 9).map((r, i) => `<tr class="${r.id === agent ? "sel" : ""}" data-id="${r.id}" tabindex="0">
-      <td class="r">${i + 1}</td><td class="d">${esc(r.hypothesis)}</td><td class="k">${r.score == null ? "" : `<span class="sc">${esc(+r.score.toFixed(3))}</span>`}</td><td class="e">${Math.round(r.elo)}</td></tr>`).join("")
-      || `<tr><td class="empty">Agents are rated in head-to-head matches once they have results.</td></tr>`;
+    $("tsub").textContent = tour.rows.length ? `${tour.matches} matches · ${tour.by_eval} by eval score` : "starts after 10 steps of work";
+    $("lb").innerHTML = tour.rows.slice(0, 8).map((r, i) => `<tr data-id="${r.id}" tabindex="0" class="${r.id === agent ? "table-active" : ""}">
+      <td class="text-secondary">${i + 1}</td><td class="text-truncate" style="max-width:280px">${esc(r.hypothesis)}</td>
+      <td>${r.score == null ? '<span class="text-secondary">–</span>' : `<span class="badge bg-green-lt">${esc(+r.score.toFixed(3))}</span>`}</td>
+      <td class="fw-bold">${Math.round(r.elo)}</td><td class="text-secondary">${r.w}-${r.l}-${r.d}</td></tr>`).join("")
+      || `<tr><td colspan="5" class="text-secondary">Agents are rated head-to-head once they have results.</td></tr>`;
     $("asub").textContent = `${x.running} working · ${fmt(x.total)} total`;
     // shortcut: draws the newest 4000 agents as DOM dots, switch to <canvas> if swarms grow past that
     $("dots").innerHTML = kids.slice(0, 4000).map(k => `<button type="button" class="${kind(k.status)} ${k.id === agent ? "sel" : ""}" data-id="${k.id}" title="${esc(k.hypothesis)} · ${esc(k.status)}" aria-label="Agent ${k.id.slice(-4)}, ${esc(k.status)}"></button>`).join("");
   }
-  const [kn, ku] = fmt(x.tokens).match(/^([\d.]+)(\D*)$/).slice(1);
-  $("kbig").innerHTML = `${kn}<small>${ku}</small>`;
-  $("kfoot").textContent = `of ${fmt(x.budget)} budget`;
-  $("kcap").style.width = `${Math.min(100, x.tokens / x.budget * 100)}%`;
-  if (swarm) {
-    const best = tour.rows.filter(r => r.score != null).sort((a, b) => b.score - a.score)[0];
-    $("bbig").textContent = best ? +best.score.toFixed(3) : "–";
-    $("bfoot").textContent = best ? best.hypothesis : "No eval scores yet";
-  } else {
-    $("bbig").textContent = x.steps;
-    $("bfoot").textContent = "Reviewed every 10 steps";
-  }
+  $("wsub").textContent = swarm ? (followed ? `agent …${followed.id.slice(-4)} · ${followed.hypothesis}` : "pick an agent to follow") : `${x.steps} steps`;
   paintClock(); paintTps(); paintGpu();
   const id = swarm ? agent : x.id;
   if (id) await pullLog(id); else $("log").textContent = "";
 }
 
 function follow(id) { agent = id; off = -1; $("log").innerHTML = ""; tick(); }
+$("dots").onclick = e => { const b = e.target.closest("button"); if (b) follow(b.dataset.id); };
+$("lb").onclick = e => { const r = e.target.closest("tr[data-id]"); if (r) follow(r.dataset.id); };
+$("lb").onkeydown = e => { const r = e.target.closest("tr[data-id]"); if (r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); follow(r.dataset.id); } };
+$("pick").onchange = () => { sel = $("pick").value; agent = null; off = -1; tick(); };
 
 function paintClock() {
-  if (!clock || !$("rbig")) return;
-  const s = clock.base + (clock.running ? Date.now() / 1000 - clock.at : 0), [n, u, rest] = dur(s);
-  $("rstate").textContent = clock.running ? "Running" : "Ran";
-  $("rsince").textContent = clock.since ? new Date(clock.since * 1000).toLocaleDateString(undefined, {weekday: "short", month: "short", day: "numeric"}) : "";
-  $("rbig").innerHTML = `${n}<small>${u}</small>`;
-  $("rsmall").textContent = rest;
+  if (!clock) return;
+  $("clock").textContent = dur(clock.base + (clock.running ? Date.now() / 1000 - clock.at : 0));
+  $("since").textContent = `${clock.running ? "Running" : "Ran"} since ${new Date(clock.since * 1000).toLocaleDateString(undefined, {weekday: "short", month: "short", day: "numeric"})}`;
 }
 setInterval(paintClock, 1000);
-
-function paintTps() {
-  if (!$("tps")) return;
-  $("tps").innerHTML = `${tps >= 100 ? Math.round(tps) : tps.toFixed(1)}<small>tok/s</small>`;
-  const max = Math.max(1, ...hist), pts = hist.map((v, i) => `${(i * 100 / Math.max(1, hist.length - 1)).toFixed(1)},${(28 - v / max * 25).toFixed(1)}`);
-  $("sline").setAttribute("points", pts.join(" "));
-  $("sfill").setAttribute("d", pts.length > 1 ? `M0,30 L${pts.join(" L")} L100,30 Z` : "");
-}
-
+function paintTps() { $("tps").textContent = `${tps >= 100 ? Math.round(tps) : tps.toFixed(1)} tok/s`; }
 function paintGpu() {
-  if (!$("gpu")) return;
   const ok = gpus.filter(g => !g.error);
-  $("gsub").textContent = ok.length > 1 ? `${ok.length} Macs` : ok[0]?.host || "";
-  $("gpu").innerHTML = !gpus.length ? `<div class="empty">Waiting for macmon…</div>` : !ok.length ? `<div class="empty">${esc(gpus[0].error)}</div>`
-    : ok.length === 1 ? `<div class="big" style="margin:0">${ok[0].mhz}<small>MHz</small></div><div class="mac"><span class="foot" style="margin:0">${Math.round(ok[0].active * 100)}% busy · ${Math.round(ok[0].watts)} W</span><span></span><span class="cap"><i style="width:${ok[0].active * 100}%"></i></span></div>`
-    : ok.map(g => `<div class="mac"><span>${esc(g.host)}</span><b>${g.mhz}<small style="font-size:11px;color:var(--sub)"> MHz</small></b><span class="cap" role="meter" aria-label="${esc(g.host)} GPU busy" aria-valuenow="${Math.round(g.active * 100)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${g.active * 100}%"></i></span></div>`).join("");
+  $("gpu").innerHTML = !gpus.length ? `<div class="text-secondary small">Waiting for macmon…</div>` : !ok.length ? `<div class="text-secondary small">${esc(gpus[0].error)}</div>`
+    : ok.map(g => `<div class="mb-2"><div class="d-flex small mb-1"><span>${esc(g.host)}</span><span class="ms-auto fw-bold">${g.mhz} MHz</span><span class="text-secondary ms-2">${Math.round(g.active * 100)}%</span></div>
+      <div class="progress progress-sm"><div class="progress-bar bg-success" style="width:${g.active * 100}%" role="progressbar" aria-label="${esc(g.host)} GPU busy" aria-valuenow="${Math.round(g.active * 100)}" aria-valuemin="0" aria-valuemax="100"></div></div></div>`).join("");
 }
 
 async function pullLog(id) {
@@ -345,31 +251,29 @@ async function pullLog(id) {
 
 async function engine() {
   const [s, g] = await Promise.all([get("/status"), get("/gpu")]);
-  gpus = g; paintGpu();
+  gpus = g; if (sel) paintGpu();
   const act = s.adapters.find(a => a.active), on = s.up || s.source !== "local";
-  $("led").className = "led" + (on ? " on" : "");
-  $("engine").innerHTML = s.source === "local"
-    ? `<b>${esc((s.models[0] || s.base_model).split("/").pop())}</b>${act ? ` + ${esc(act.name)}` : ""}${s.hosts ? ` · ${s.hosts.hosts.length} Macs` : ""}${s.up ? "" : " · off"}`
-    : `<b>${esc(s.model)}</b> · API`;
+  $("dot").className = "status-dot " + (on ? "status-dot-animated bg-green" : "bg-red");
+  $("engine").textContent = s.source === "local"
+    ? `${(s.models[0] || s.base_model).split("/").pop()}${act ? ` + ${act.name}` : ""}${s.hosts ? ` · ${s.hosts.hosts.length} Macs` : ""}${s.up ? "" : " · off"}`
+    : `${s.model} · API`;
   if (!$("settings").open) return;
-  $("engState").textContent = s.up ? "Running" : "Stopped";
-  $("adapters").innerHTML = s.adapters.map(a => `<div class="fr"><span>${esc(a.name)}</span><span class="note" style="width:auto">${esc(a.status)} · loss ${a.base_loss ?? "–"} → ${a.test_loss ?? "–"}</span>
-      <span style="margin-left:auto">${a.active ? `<button class="mini" type="button" data-adopt="none">Roll back</button>` : a.status === "trained" ? `<button class="mini blue" type="button" data-adopt="${esc(a.name)}">Adopt</button>` : ""}</span></div>`).join("")
-    || `<div class="fr"><span class="note" style="width:auto">None yet. Agents train adapters with the finetune tool.</span></div>`;
+  $("engState").textContent = s.up ? "· running" : "· stopped";
+  $("adapters").innerHTML = s.adapters.map(a => `<tr><td>${esc(a.name)}</td><td class="text-secondary">${esc(a.status)}</td><td class="text-secondary">loss ${a.base_loss ?? "–"} → ${a.test_loss ?? "–"}</td>
+      <td class="text-end">${a.active ? `<span class="badge bg-green-lt me-2">active</span><button class="btn btn-sm" type="button" data-adopt="none">Roll back</button>` : a.status === "trained" ? `<button class="btn btn-sm btn-primary" type="button" data-adopt="${esc(a.name)}">Adopt</button>` : ""}</td></tr>`).join("")
+    || `<tr><td class="text-secondary">None yet. Agents train adapters with the finetune tool.</td></tr>`;
   $("elog").textContent = (s.serve_log + s.setup_log).slice(-2500) || "No engine output yet.";
 }
 
-function setSrc(src) { document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.src === src)); $("apiRows").hidden = src !== "api"; }
 async function openSettings() {
-  const s = await get("/status");
-  setSrc(s.source === "local" ? "local" : "api");
-  if (s.source !== "local") { $("url").value = s.source; $("model").value = s.model; }
+  const s = await get("/status"), api = s.source !== "local";
+  document.querySelector(`input[name=src][value=${api ? "api" : "local"}]`).checked = true;
+  $("apiRows").hidden = !api;
+  if (api) { $("url").value = s.source; $("model").value = s.model; }
   $("key").placeholder = s.has_key ? "Saved · type to replace" : "Stored on this Mac only";
   $("smodel").value = s.base_model; $("srcMsg").textContent = "";
   $("settings").showModal(); engine();
 }
-
-$("tabs").onclick = e => { const t = e.target.closest(".tab"); if (t) { sel = t.dataset.id; agent = null; tick(); } };
 $("new").onsubmit = async e => {
   e.preventDefault();
   const hypothesis = $("goal").value.trim(), budget = parseN($("budget").value);
@@ -380,9 +284,9 @@ $("new").onsubmit = async e => {
 };
 $("gear").onclick = openSettings;
 $("closeSet").onclick = () => $("settings").close();
-document.querySelector(".seg").onclick = e => { if (e.target.dataset.src) setSrc(e.target.dataset.src); };
+document.querySelectorAll("input[name=src]").forEach(r => r.onchange = () => $("apiRows").hidden = r.value !== "api" || !r.checked);
 $("saveSrc").onclick = async () => {
-  const api = document.querySelector(".seg [aria-pressed=true]").dataset.src === "api";
+  const api = document.querySelector("input[name=src]:checked").value === "api";
   const body = api ? {url: $("url").value.trim(), model: $("model").value.trim(), ...($("key").value ? {key: $("key").value} : {})}
     : {url: "http://127.0.0.1:8080/v1/chat/completions", model: "default_model"};
   const r = await post("/config", body);
