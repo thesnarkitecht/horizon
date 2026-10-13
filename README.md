@@ -27,18 +27,35 @@ This builds `~/Applications/Horizon.app`. You also need these on macOS 26:
 - `brew install container && container system start`: the VM runtime
 - `pip install mlx-lm`: the model server, needed on every Mac and installed at the same path on each
 - `brew install macmon`: GPU stats without sudo, needed on every Mac
+- with an API key instead of the local engine, `mlx-lm` is optional
 
-## Engine: two Mac Studios over Thunderbolt 5
+## Model: local or an API key
 
-Open **Engine** in the app:
-1. **Pair Macs**: enter `studio1.local,studio2.local`. This runs MLX's JACCL setup, which enables RDMA over Thunderbolt and needs ssh plus password-less sudo between the Macs.
-2. **Start**: serves Ornith-1.5-397B at 4-bit, split across both Macs.
+Open **settings** in the app.
+- **Local engine (default, one Mac Studio):** **start** serves the base model, Qwen3.8-27B at 8-bit, twice. One copy serves the agents with the adapter they adopted, if any. The other is the reviewer's copy, which always runs the untouched base model. Two 27B copies use about 60 GB, so 256 GB leaves plenty for the KV cache all agents share; the server batches every agent together.
+- **API key:** any OpenAI-compatible endpoint, such as OpenRouter, OpenAI or a vLLM box. Enter the url, key and model. The key is stored in `~/.horizon/config.json` (owner-only) and never enters a VM. Fine-tuning needs the local engine.
+- **Two Mac Studios:** **pair** pools both Macs' RAM over Thunderbolt 5 with MLX's JACCL setup (needs ssh plus password-less sudo between them), so one bigger model can run across both. In that mode there are no adapters, because MLX can't split them across machines.
 
-The 4-bit model needs about 220 GB, roughly 110 GB per 256 GB Studio. The rest holds the KV cache that every running agent shares, because the server batches all of them together.
+## Agent tools
+
+Besides shell commands in its own VM, every agent can call tools that run on the Mac:
+
+| tool | what it does |
+|---|---|
+| `vm up NAME [IMAGE]` · `vm exec NAME CMD` · `vm down NAME` · `vm ls` | up to 4 extra VMs per agent, on its private network and sharing `/work` and `/shared`, for servers, clients or parallel experiments; removed when the agent finishes |
+| `finetune NAME [ITERS]` | LoRA-trains the base model on `/shared/train/NAME/{train,valid}.jsonl` on the Mac's GPU, then measures held-out loss for the base model and for the adapter |
+| `finetune status NAME` | training progress and losses |
+| `adopt NAME` · `adopt none` | switches every agent to the adapter, or back to the base model; refused unless the adapter beats the base model's held-out loss |
+| `board read` · `board post …` | the swarm's hidden message board |
+
+**How self-training works:** agents collect what the lab keeps needing from the wiki and `raw/` into chat-format training data, fine-tune, and adopt the adapter if it wins on held-out loss. Agents then run on knowledge baked into the weights. Guards:
+- The reviewer always stays on the base model.
+- Every adoption is posted to the board, so the reviewer sees it.
+- You can roll back from settings at any time.
 
 ### How many agents?
 
-The **Agents** setting is how many run at once. Over a month, a swarm can go through thousands of agents. On two 256 GB Studios, a realistic number at once is about 16 to 64. Each running agent needs a VM, plus a share of the KV cache and of the token rate. Ten thousand running at once is datacenter scale: on these two Macs each agent would get a few tokens per minute. Fewer, faster agents get more done.
+The **Agents** setting is how many run at once. Over a month, a swarm can go through thousands of agents. On a 256 GB Studio running a 27B model, a realistic number at once is about 16 to 64. Each running agent needs a VM, plus a share of the KV cache and of the token rate. Ten thousand running at once is datacenter scale: on these two Macs each agent would get a few tokens per minute. Fewer, faster agents get more done.
 
 ## Layout
 

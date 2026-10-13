@@ -7,11 +7,13 @@ from pathlib import Path
 import horizon
 
 REPLIES = []
+AUTH = []
 
 
 class FakeModel(BaseHTTPRequestHandler):
     def do_POST(self):
         self.rfile.read(int(self.headers["Content-Length"]))
+        AUTH.append(self.headers.get("Authorization"))
         self.send_response(200); self.end_headers()
         text = REPLIES.pop(0)
         for i in range(0, len(text), 4):
@@ -47,6 +49,7 @@ class Test(unittest.TestCase):
         os.environ["PATH"] = f"{fake.parent}:{os.environ['PATH']}"
         horizon.HOME, horizon.RUNS, horizon.PROJECTS = self.tmp, self.tmp / "runs", self.tmp / "projects"
         horizon.SKILLS = self.tmp / "skills"
+        horizon.CONFIG, horizon.ADAPTERS = self.tmp / "config.json", self.tmp / "adapters"
         horizon.URL = f"http://127.0.0.1:{srv.server_port}/v1/chat/completions"
         horizon.REVIEW_EVERY = 10
 
@@ -139,6 +142,51 @@ class Test(unittest.TestCase):
         parts = [m["hypothesis"] for m in horizon.runs(sid)]
         self.assertEqual(parts.count(horizon.LIBRARIAN), 1)
 
+    def test_api_key_and_config(self):
+        horizon.save_config(url=horizon.URL, key="sk-test", model="some-model")
+        self.assertEqual(os.stat(horizon.CONFIG).st_mode & 0o777, 0o600)
+        REPLIES[:] = ["DONE"]; AUTH.clear()
+        horizon.main(["run", "x", "--budget", "100"])
+        self.assertEqual(AUTH, ["Bearer sk-test"])
+        s = horizon.status()
+        self.assertTrue(s["has_key"]); self.assertNotIn("sk-test", json.dumps(s))  # the key never leaves the Mac
+
+    def test_agent_vms(self):
+        ctx = {"rid": "r", "name": "horizon-r", "mounts": [], "image": "python:3.12", "timeout": 5, "lab": self.tmp, "vms": []}
+        (horizon.RUNS / "r" / "work").mkdir(parents=True)
+        self.assertEqual(horizon.vm(ctx, "vm up db"), "db is up")
+        self.assertIn("hello", horizon.vm(ctx, "vm exec db echo hello"))
+        self.assertEqual(horizon.vm(ctx, "vm up x --privileged"), "bad image name")
+        for n in "abc":
+            horizon.vm(ctx, f"vm up {n}")
+        self.assertIn("limit", horizon.vm(ctx, "vm up e"))
+        self.assertEqual(horizon.vm(ctx, "vm ls").split(), ["db", "a", "b", "c"])
+        self.assertEqual(horizon.vm(ctx, "vm down db"), "db is down")
+        self.assertEqual(horizon.vm(ctx, "vm exec db ls"), "no VM named db")
+
+    def test_finetune_and_adopt(self):
+        lora = self.tmp / "bin" / "mlx_lm.lora"  # fake trainer: 0 iterations scores like the base model
+        lora.write_text('#!/bin/sh\ncase "$*" in *"--iters 0 "*) echo "Test loss 2.000, Test ppl 7.4.";; *) echo "Iter 600: Val loss 1.4"; echo "Test loss 1.500, Test ppl 4.5.";; esac\n')
+        lora.chmod(0o755)
+        horizon.save_config(url=horizon.LOCAL)
+        lab = self.tmp / "lab"; (lab / "train" / "facts").mkdir(parents=True)
+        for f in ("train.jsonl", "valid.jsonl"):
+            (lab / "train" / "facts" / f).write_text('{"messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]}\n')
+        ctx = {"rid": "r1", "lab": lab}
+        with mock.patch.object(horizon, "spawn", lambda *a, **k: horizon.finetune(a[1])):
+            self.assertIn("training facts", horizon.finetune_tool(ctx, "finetune facts 50"))
+        m = json.loads((horizon.ADAPTERS / "facts" / "meta.json").read_text())
+        self.assertEqual((m["status"], m["base_loss"], m["test_loss"], m["iters"]), ("trained", 2.0, 1.5, 50))
+        self.assertIn("exists", horizon.finetune_tool(ctx, "finetune facts"))
+        self.assertIn("usage", horizon.finetune_tool(ctx, "finetune ../etc"))
+        self.assertEqual(horizon.adopt("facts"), "agents now run on facts")
+        self.assertTrue(horizon.adapters()[0]["active"])
+        m["test_loss"] = 2.5; horizon.put(horizon.ADAPTERS / "facts" / "meta.json", m)
+        self.assertTrue(horizon.adopt("facts").startswith("refused"))  # worse than base: never adopted
+        self.assertEqual(horizon.adopt("none"), "agents now run on the base model")
+        horizon.save_config(url="https://api.example.com/v1/chat/completions")
+        self.assertIn("local engine", horizon.finetune_tool(ctx, "finetune other"))
+
     def test_gpu_sample(self):
         fake = self.tmp / "bin" / "macmon"
         fake.write_text("#!/bin/sh\necho '" + json.dumps({"gpu_freq_mhz": 1398, "gpu_active_ratio": 0.97, "gpu_power": 61.5,
@@ -151,7 +199,7 @@ class Test(unittest.TestCase):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         base = f"http://127.0.0.1:{srv.server_port}"
         self.assertEqual(json.load(urllib.request.urlopen(base + "/runs")), [])
-        self.assertIn(b"What should the lab find out?", urllib.request.urlopen(base + "/").read())
+        self.assertIn(b"what should the lab find out?", urllib.request.urlopen(base + "/").read())
         self.assertFalse(json.load(urllib.request.urlopen(base + "/status"))["up"])
 
         def post(path, body, headers={"X-Horizon": "1"}):

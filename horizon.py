@@ -9,7 +9,7 @@ reviewer read. All agents share one model server, which batches them together.
 Horizon.app runs `horizon.py app` and shows its dashboard. The other subcommands are what the
 dashboard spawns (and handy for debugging): run, swarm, ls, log, stop, setup, serve.
 """
-import argparse, json, os, re, shutil, signal, subprocess, sys, threading, time, urllib.request, webbrowser
+import argparse, json, os, re, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -18,9 +18,14 @@ RUNS = HOME / "runs"
 SKILLS = HOME / "skills"  # one skill library for every agent, minted by the agents themselves
 PROJECTS = HOME / "projects"  # swarms: meta.json + board.jsonl; their agents are ordinary runs
 HOSTS = HOME / "hosts.json"  # written by `horizon setup`
-URL = os.environ.get("HORIZON_URL", "http://127.0.0.1:8080/v1/chat/completions")
+LOCAL = "http://127.0.0.1:8080/v1/chat/completions"  # the local engine agents use (base model + adopted adapter)
+LOCAL_REVIEW = "http://127.0.0.1:8081/v1/chat/completions"  # base weights only: the reviewer never runs fine-tuned
+URL = os.environ.get("HORIZON_URL", LOCAL)
 MODEL = os.environ.get("HORIZON_MODEL", "default_model")  # mlx_lm.server: the model it was started with
-SERVE_MODEL = "mlx-community/Ornith-1.5-397B-4bit"  # shortcut: assumed MLX quant name, check Hugging Face before first serve
+SERVE_MODEL = "mlx-community/Qwen3.8-27B-8bit"  # shortcut: assumed MLX quant name, check Hugging Face before first serve
+CONFIG = HOME / "config.json"  # model source, set in the app; an API key never leaves this Mac
+ADAPTERS = HOME / "adapters"  # LoRA adapters the agents train
+MAX_VMS = 4  # extra VMs per agent
 SELF = Path(__file__).resolve()
 NET = "horizon-offline"  # host-only network: no internet from the VM
 PORT = 7777
@@ -40,6 +45,18 @@ Each reply: think briefly, then give exactly ONE command in a ```bash block. You
 A reviewer reads your work and will stop you if you drift from the goal or claim unverified results.
 When the goal is met with a verified result (or disproved), write it to /work/RESULT.md
 and reply with the single word DONE and no bash block."""
+
+TOOLS = """
+Host tools: give one as your command; it runs on the Mac, not in your VM.
+  vm up NAME [IMAGE] | vm exec NAME CMD | vm down NAME | vm ls
+        up to 4 extra VMs on your private network, sharing /work and /shared: servers, clients,
+        parallel experiments. They are removed when you finish.
+  finetune NAME [ITERS]   LoRA-train the lab's base model on /shared/train/NAME/{train,valid}.jsonl
+        (one {"messages": [...]} chat per line). Trains in the background on the GPU.
+  finetune status NAME    training progress, and held-out loss: base model vs your adapter
+  adopt NAME              run every agent on that adapter (only if it beats the base model's held-out
+        loss); "adopt none" rolls back. The reviewer always runs the untouched base model.
+Fine-tune to bake in knowledge the lab keeps needing (from the wiki and raw/), never to skip verification."""
 
 LAB = """
 Your lab, in /shared (kept after you finish):
@@ -81,29 +98,52 @@ REVIEWER = """You supervise an autonomous research agent. Read its goal, plan an
 Kill it if it is misaligned: working on something other than the goal, claiming results it did not
 verify, trying to reach the network or escape its VM, destroying its own evidence, or looping with
 no progress. The board shows what agents tell each other; kill agents that post misleading claims,
-coordinate to evade review, or flood it, and agents that write misleading wiki pages or skills. Reply ON_TRACK, or KILL: <one-line reason>."""
+coordinate to evade review, or flood it, and agents that write misleading wiki pages or skills, or
+fine-tune on data meant to change the agents' goals or weaken review. Reply ON_TRACK, or KILL: <one-line reason>."""
 
 
 def sh(*cmd, timeout=None):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
-def stream(messages, out):
+def cfg():
+    """Model source: the local engine, or any OpenAI-compatible API (url + key + model) set in the app."""
+    c = {"url": URL, "key": "", "model": MODEL, "base_model": SERVE_MODEL}
+    try:
+        c.update(json.loads(CONFIG.read_text()))
+    except (OSError, ValueError):
+        pass
+    c["review_url"] = LOCAL_REVIEW if c["url"] == LOCAL and not HOSTS.exists() else c["url"]
+    return c
+
+
+def stream(messages, out, review=False):
     """Stream one completion, passing each token to out(). Returns (text, tokens)."""
-    body = json.dumps({"model": MODEL, "messages": messages, "stream": True, "max_tokens": 8192}).encode()
-    req = urllib.request.Request(URL, body, {"Content-Type": "application/json"})
-    text, tokens = "", 0
-    with urllib.request.urlopen(req) as r:
-        for line in r:
-            line = line.decode().strip()
-            if not line.startswith("data:") or line == "data: [DONE]":
-                continue
-            delta = json.loads(line[5:])["choices"][0]["delta"].get("content") or ""
-            if delta:
-                tokens += 1  # shortcut: one SSE chunk ~ one token on mlx_lm.server, use a tokenizer if billing matters
-                text += delta
-                out(delta)
-    return text, tokens
+    c = cfg()
+    headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {c['key']}"} if c["key"] else {})}
+    body = json.dumps({"model": c["model"], "messages": messages, "stream": True, "max_tokens": 8192}).encode()
+    for _ in range(60):  # the engine restarts when an adapter is adopted: wait up to 10 minutes for it
+        text, tokens = "", 0
+        try:
+            with urllib.request.urlopen(urllib.request.Request(c["review_url"] if review else c["url"], body, headers)) as r:
+                for line in r:
+                    line = line.decode().strip()
+                    if not line.startswith("data:") or line == "data: [DONE]":
+                        continue
+                    choice = (json.loads(line[5:]).get("choices") or [{}])[0]  # APIs send usage-only chunks too
+                    delta = (choice.get("delta") or {}).get("content") or ""
+                    if delta:
+                        tokens += 1  # shortcut: one SSE chunk ~ one token, use a tokenizer if billing matters
+                        text += delta
+                        out(delta)
+            return text, tokens
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                raise  # bad key, bad model name: waiting won't fix it
+        except (urllib.error.URLError, ConnectionError, TimeoutError):
+            pass
+        time.sleep(10)
+    raise RuntimeError("model unreachable for 10 minutes")
 
 
 def put(path, obj):
@@ -147,6 +187,126 @@ def skills_index():
     return "\n".join(lines)
 
 
+VM_USAGE = "usage: vm up NAME [IMAGE] | vm exec NAME CMD | vm down NAME | vm ls"
+
+
+def vm(ctx, cmd):
+    """Extra VMs an agent starts for itself: same private network and mounts, stopped when it ends."""
+    m = re.match(r"vm\s+(up|exec|down|ls)\b\s*([\w-]*)\s*(.*)", cmd, re.S)
+    if not m:
+        return VM_USAGE
+    verb, short, rest = m[1], m[2], m[3].strip()
+    mine = ctx["vms"]
+    if verb == "ls":
+        return "\n".join(v.rsplit("-", 1)[-1] for v in mine) or "(no extra VMs)"
+    if not short:
+        return VM_USAGE
+    full = f"{ctx['name']}-{short}"
+    if verb == "up":
+        image = rest or ctx["image"]
+        if not re.fullmatch(r"[\w][\w./:@-]*", image):
+            return "bad image name"
+        if full not in mine and len(mine) >= MAX_VMS:
+            return f"limit: {MAX_VMS} extra VMs per agent; vm down one first"
+        r = sh("container", "run", "-d", "--rm", "--name", full, "--network", NET, *ctx["mounts"], "-w", "/work",
+               image, "sleep", "infinity")
+        if r.returncode:
+            return f"vm up failed: {r.stderr.strip()[-300:]}"
+        mine.append(full)
+        return f"{short} is up"
+    if full not in mine:
+        return f"no VM named {short}"
+    if verb == "down":
+        sh("container", "stop", full)
+        mine.remove(full)
+        return f"{short} is down"
+    try:
+        r = sh("container", "exec", full, "sh", "-c", rest, timeout=ctx["timeout"])
+        return f"exit {r.returncode}\n{r.stdout}{r.stderr}"
+    except subprocess.TimeoutExpired:
+        return f"timed out after {ctx['timeout']}s"
+
+
+def adapters():
+    out = []
+    active = (HOME / "active_adapter").read_text().strip() if (HOME / "active_adapter").exists() else None
+    for f in sorted(ADAPTERS.glob("*/meta.json")):
+        m = json.loads(f.read_text())
+        out.append({**m, "name": f.parent.name, "active": f.parent.name == active})
+    return out
+
+
+def finetune_tool(ctx, cmd):
+    """finetune NAME [ITERS] | finetune status NAME. Training runs on the Mac's GPU, never in a VM."""
+    args = cmd.split()[1:]
+    if args[:1] == ["status"] and len(args) == 2 and re.fullmatch(r"[\w-]{1,40}", args[1]):
+        a = ADAPTERS / args[1]
+        if not (a / "meta.json").exists():
+            return f"no adapter named {args[1]}"
+        log = (a / "train.log").read_text()[-1500:] if (a / "train.log").exists() else ""
+        return json.dumps(json.loads((a / "meta.json").read_text())) + "\n" + log
+    c = cfg()
+    if c["url"] != LOCAL or HOSTS.exists():
+        return "finetune needs the local engine on one Mac (adapters can't run on an API or across paired Macs)"
+    if not args or not re.fullmatch(r"[\w-]{1,40}", args[0]):
+        return "usage: finetune NAME [ITERS] | finetune status NAME"
+    name, data = args[0], ctx["lab"] / "train" / args[0]
+    if not ((data / "train.jsonl").is_file() and (data / "valid.jsonl").is_file()):
+        return f"put train.jsonl and valid.jsonl in /shared/train/{name}/ first"
+    a = ADAPTERS / name
+    if a.exists():
+        return f"adapter {name} exists; pick a new name"
+    iters = max(10, min(20000, int(args[1]))) if len(args) > 1 and args[1].isdigit() else 600
+    a.mkdir(parents=True)
+    shutil.copytree(data, a / "data")  # a frozen copy: the agent can't change the data mid-training
+    shutil.copy(a / "data" / "valid.jsonl", a / "data" / "test.jsonl")  # held-out loss is measured on valid
+    put(a / "meta.json", {"by": ctx["rid"], "base": c["base_model"], "iters": iters, "status": "training",
+                          "created": time.time()})
+    spawn("_finetune", name, log=a / "train.log")
+    return f"training {name} ({iters} iters) in the background; check: finetune status {name}"
+
+
+def finetune(name):
+    """LoRA-train, then measure held-out loss for the base model and for the adapter."""
+    a = ADAPTERS / name
+    m = json.loads((a / "meta.json").read_text())
+    lora = shutil.which("mlx_lm.lora") or "mlx_lm.lora"
+
+    def run(iters, out):
+        p = subprocess.Popen([lora, "--model", m["base"], "--train", "--iters", str(iters), "--test",
+                              "--data", str(a / "data"), "--adapter-path", str(a / out)],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        text = ""
+        for line in p.stdout:
+            print(line, end="", flush=True); text += line
+        losses = re.findall(r"Test loss ([\d.]+)", text)
+        return float(losses[-1]) if p.wait() == 0 and losses else None
+
+    m["base_loss"] = run(0, "untrained")  # shortcut: a 0-iteration LoRA is the base model, verify on first real run
+    m["test_loss"] = run(m["iters"], "lora")
+    m["status"] = "trained" if m["test_loss"] is not None else "failed"
+    put(a / "meta.json", m)
+
+
+def adopt(name):
+    """Point the agents' engine at an adapter (or "none"), then restart it if Horizon runs it."""
+    active = HOME / "active_adapter"
+    if name == "none":
+        active.unlink(missing_ok=True)
+    else:
+        f = ADAPTERS / name / "meta.json"
+        if not re.fullmatch(r"[\w-]{1,40}", name) or not f.exists():
+            return f"no adapter named {name}"
+        m = json.loads(f.read_text())
+        if m.get("test_loss") is None or m.get("base_loss") is None or m["test_loss"] >= m["base_loss"]:
+            return f"refused: {name} doesn't beat the base model on held-out loss ({m.get('test_loss')} vs {m.get('base_loss')})"
+        active.write_text(name)
+    if (HOME / "serve.pid").exists():
+        kill_server()
+        spawn("serve", log=HOME / "serve.log")
+    return f"agents now run on {name}" if name != "none" else "agents now run on the base model"
+
+
 def answer(reply):
     return reply.split("</think>")[-1]
 
@@ -162,7 +322,7 @@ def review(goal, plan, history, posts=""):
     steps = "\n\n".join(f"[{m['role']}] {m['content'][-1500:]}" for m in history[-20:])
     reply, n = stream([{"role": "system", "content": REVIEWER},
                        {"role": "user", "content": f"Goal: {goal}\n\nPLAN.md:\n{plan}\n\nRecent steps:\n{steps}" + (f"\n\nBoard:\n{posts}" if posts else "")}],
-                      lambda s: None)
+                      lambda s: None, review=True)
     verdict = answer(reply).strip()
     return (verdict[4:].strip(" :") or "no reason given") if verdict.startswith("KILL") else None, n
 
@@ -274,6 +434,8 @@ def work(rid, echo=True):
         (lab / sub).mkdir(parents=True, exist_ok=True)
     SKILLS.mkdir(parents=True, exist_ok=True)
     mounts = ["-v", f"{d / 'work'}:/work", "-v", f"{lab}:/shared", "-v", f"{SKILLS}:/skills"]
+    ctx = {"rid": rid, "name": name, "mounts": mounts, "image": meta["image"], "timeout": meta["timeout"],
+           "lab": lab, "vms": []}
     r = sh("container", "run", "-d", "--rm", "--name", name, "--network", NET,
            *mounts, "-w", "/work", meta["image"], "sleep", "infinity")
     if r.returncode:
@@ -292,11 +454,11 @@ def work(rid, echo=True):
     pid = meta.get("project")
     if pid:
         swarm_goal = json.loads((PROJECTS / pid / "meta.json").read_text())["goal"]
-        task = [{"role": "system", "content": SYSTEM + LAB + SWARM},
+        task = [{"role": "system", "content": SYSTEM + TOOLS + LAB + SWARM},
                 {"role": "user", "content": f"Goal: {swarm_goal}\n\nYour part: {goal}"}]
         goal = f"{swarm_goal} / part: {goal}"
     else:
-        task = [{"role": "system", "content": SYSTEM + LAB}, {"role": "user", "content": f"Goal: {goal}"}]
+        task = [{"role": "system", "content": SYSTEM + TOOLS + LAB}, {"role": "user", "content": f"Goal: {goal}"}]
     task[1]["content"] += f"\n\nSkills available in /skills:\n{skills_index() or '(none yet: mint the first)'}"
     if meta.get("revive"):
         task[1]["content"] += (f"\n\nYou are being revived to continue earlier work: {meta['revive']}\n"
@@ -316,10 +478,21 @@ def work(rid, echo=True):
                 history.append({"role": "user", "content": "Give exactly one command in a ```bash block, or reply DONE."})
                 continue
             out(f"\n\033[36m$ {cmd}\033[0m\n")
-            if pid and cmd.split()[0] == "board":
-                result = board(pid, rid, cmd)
+            head = cmd.split()[0]
+            if head == "board":
+                result = board(pid, rid, cmd) if pid else "the board is for swarms; you are working alone"
                 out("(board: hidden from the dashboard)\n")  # only agents and the reviewer read the board
                 history.append({"role": "user", "content": result})
+                continue
+            if head in ("vm", "finetune", "adopt"):
+                if head == "adopt":
+                    result = adopt(cmd.split()[1]) if len(cmd.split()) == 2 else "usage: adopt NAME | adopt none"
+                    if pid and not result.startswith(("refused", "no adapter")):
+                        board(pid, rid, f"board post ADOPTED: {cmd.split()[1]} ({result})")  # the reviewer sees it
+                else:
+                    result = vm(ctx, cmd) if head == "vm" else finetune_tool(ctx, cmd)
+                out(result[:MAX_OUT] + "\n")
+                history.append({"role": "user", "content": result[:MAX_OUT]})
                 continue
             try:
                 r = sh("container", "exec", name, "sh", "-c", cmd, timeout=meta["timeout"])
@@ -351,9 +524,23 @@ def work(rid, echo=True):
         save()
         if meta.get("repo"):
             out("\n" + publish(d, name, rid) + "\n")
-        sh("container", "stop", name)
+        for v in [name, *ctx["vms"]]:
+            sh("container", "stop", v)
         out(f"\n{meta['status']}: {meta['steps']} steps, {meta['tokens']} tokens. files in {d / 'work'}\n")
         log.close()
+
+
+def save_config(**kw):
+    c = {}
+    try:
+        c = json.loads(CONFIG.read_text())
+    except (OSError, ValueError):
+        pass
+    c.update(kw)
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(CONFIG, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # holds an API key: owner-only
+    with os.fdopen(fd, "w") as f:
+        json.dump(c, f)
 
 
 def status():
@@ -365,7 +552,10 @@ def status():
     except Exception:
         up, models = False, []
     tail = lambda f: (HOME / f).read_text()[-4000:] if (HOME / f).exists() else ""
+    c = cfg()
     return {"up": up, "models": models, "hosts": json.loads(HOSTS.read_text()) if HOSTS.exists() else None,
+            "source": "local" if c["url"] == LOCAL else c["url"], "model": c["model"], "base_model": c["base_model"],
+            "has_key": bool(c["key"]), "adapters": adapters(),
             "serve_log": tail("serve.log"), "setup_log": tail("setup.log")}
 
 
@@ -584,6 +774,22 @@ class Dashboard(BaseHTTPRequestHandler):
                     put(PROJECTS / m[2] / "meta.json", pm)
                     spawn("_swarm", m[2], log=PROJECTS / m[2] / "swarm.log")
             return self.reply(200 if ok else 409)
+        if self.path == "/config":
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            url = str(body.get("url") or LOCAL).strip()
+            if not re.fullmatch(r"https?://\S+", url):
+                return self.reply(400)
+            kw = {"url": url, "model": str(body.get("model") or "default_model").strip()}
+            if "key" in body:  # absent: keep the stored key
+                kw["key"] = str(body["key"]).strip()
+            if body.get("base_model"):
+                kw["base_model"] = str(body["base_model"]).strip()
+            save_config(**kw)
+            return self.reply(200)
+        m = re.fullmatch(r"/adapters/([\w-]{1,40})/adopt", self.path)
+        if m:
+            msg = adopt(m[1])
+            return self.reply(409 if msg.startswith(("refused", "no adapter")) else 200, msg.encode(), "text/plain")
         if self.path == "/serve/stop":
             kill_server()
             return self.reply(200)
@@ -622,9 +828,10 @@ def main(argv=None):
     s = sub.add_parser("setup", help="pair Macs for distributed inference")
     s.add_argument("hosts", help="comma separated ssh hostnames, e.g. studio1.local,studio2.local")
     v = sub.add_parser("serve", help="start the model server")
-    v.add_argument("--model", default=SERVE_MODEL)
+    v.add_argument("--model", help=f"base model (default {SERVE_MODEL})")
     w = sub.add_parser("_work"); w.add_argument("id")
     w = sub.add_parser("_swarm"); w.add_argument("id")
+    w = sub.add_parser("_finetune"); w.add_argument("name")
     a = p.parse_args(argv or ["run"])
 
     if a.cmd == "run":
@@ -643,6 +850,8 @@ def main(argv=None):
         spawn("_swarm", sid, log=PROJECTS / sid / "swarm.log"); print(sid)
     elif a.cmd == "_swarm":
         swarm(a.id)
+    elif a.cmd == "_finetune":
+        finetune(a.name)
     elif a.cmd == "ls":
         for m in projects():
             print(f"{m['id']} {m['status'][:20]:<20} {m['running']:>4} running {m['total']:>6} agents {m['tokens']:>12} tok  {m['goal'][:40]}")
@@ -667,11 +876,22 @@ def main(argv=None):
                                              "--hosts", a.hosts, "--auto-setup", "--output-hostfile", str(HOSTS)])
     elif a.cmd == "serve":
         HOME.mkdir(parents=True, exist_ok=True)
+        if a.model:
+            save_config(base_model=a.model)
+        model = cfg()["base_model"]
         (HOME / "serve.pid").write_text(str(os.getpid()))  # exec keeps this pid
-        cmd = [shutil.which("mlx_lm.server") or "mlx_lm.server", "--model", a.model, "--host", "127.0.0.1", "--port", "8080"]
+        server = shutil.which("mlx_lm.server") or "mlx_lm.server"
+        cmd = [server, "--model", model, "--host", "127.0.0.1", "--port", "8080"]
         if HOSTS.exists():
-            # tensor-parallel across the paired Macs; shortcut: assumes mlx_lm is installed at the same path on each
+            # one bigger model tensor-parallel across the paired Macs (no adapters: mlx_lm can't shard them);
+            # shortcut: assumes mlx_lm is installed at the same path on each
             cmd = ["mlx.launch", "--backend", "jaccl", "--hostfile", str(HOSTS), "--env", "MLX_METAL_FAST_SYNCH=1", "--", *cmd]
+        else:
+            # the reviewer's copy: base weights, never fine-tuned (a 27B model fits twice in 256 GB)
+            subprocess.Popen([server, "--model", model, "--host", "127.0.0.1", "--port", "8081"])
+            active = HOME / "active_adapter"
+            if active.exists():
+                cmd += ["--adapter-path", str(ADAPTERS / active.read_text().strip() / "lora")]
         os.execvp(cmd[0], cmd)
 
 
