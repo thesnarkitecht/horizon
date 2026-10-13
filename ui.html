@@ -82,7 +82,7 @@ details.work pre { margin: 16px 0 0; max-height: 46vh; overflow: auto; padding: 
 
 dialog { border: 2px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); padding: 28px; width: min(600px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgb(0 0 242 / .25); }
-dialog h3 { margin: 0 0 20px; font-size: 34px; }
+dialog h2 { margin: 0 0 20px; font-size: 34px; }
 dialog .field { display: flex; gap: 16px; align-items: end; margin-bottom: 16px; }
 dialog input { flex: 1; min-width: 0; background: none; border: 0; border-bottom: 1px solid var(--ink); padding: 8px 0; outline: none; }
 dialog input:focus { border-bottom: 2px solid var(--blue); }
@@ -123,7 +123,7 @@ dialog pre { height: 160px; overflow: auto; background: rgb(127 127 127 / .07); 
 </main>
 
 <dialog id="engineDlg">
-  <h3 class="display">Engine</h3>
+  <h2 class="display">Engine</h2>
   <div class="field"><input id="smodel" placeholder="Model · default Ornith-1.5-397B 4-bit" aria-label="model"><button class="solid" id="serve" type="button">Start</button><button class="link" id="halt" type="button">Stop</button></div>
   <div class="field"><input id="hosts" placeholder="studio1.local,studio2.local" aria-label="Macs to pair"><button class="link" id="pair" type="button">Pair Macs</button></div>
   <div class="label" id="gpuline"></div>
