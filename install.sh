@@ -1,19 +1,16 @@
 #!/bin/sh
 # curl -fsSL https://raw.githubusercontent.com/thesnarkitecht/horizon/main/install.sh | sh
+# Builds ~/Applications/Horizon.app. Needs Xcode Command Line Tools (xcode-select --install).
 set -eu
 SRC="${HORIZON_SRC:-https://raw.githubusercontent.com/thesnarkitecht/horizon/main}"
-BIN="$HOME/.horizon/bin"
-mkdir -p "$BIN" "$HOME/.local/bin"
-for f in horizon.py ui.html app/Horizon.swift; do curl -fsSL "$SRC/$f" -o "$BIN/$(basename "$f")"; done
-chmod +x "$BIN/horizon.py"
-ln -sf "$BIN/horizon.py" "$HOME/.local/bin/horizon"
-echo "installed: horizon -> ~/.local/bin/horizon"
-
-if command -v swiftc >/dev/null 2>&1; then
-  A="$HOME/Applications/Horizon.app/Contents"
-  mkdir -p "$A/MacOS"
-  swiftc -O "$BIN/Horizon.swift" -o "$A/MacOS/Horizon"
-  cat > "$A/Info.plist" <<PLIST
+command -v swiftc >/dev/null 2>&1 || { echo "run 'xcode-select --install' first, then re-run this"; exit 1; }
+A="$HOME/Applications/Horizon.app/Contents"
+mkdir -p "$A/MacOS" "$A/Resources"
+for f in horizon.py ui.html; do curl -fsSL "$SRC/$f" -o "$A/Resources/$f"; done
+curl -fsSL "$SRC/app/Horizon.swift" -o "$A/Resources/Horizon.swift"
+swiftc -O "$A/Resources/Horizon.swift" -o "$A/MacOS/Horizon"
+rm "$A/Resources/Horizon.swift"
+cat > "$A/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -26,11 +23,7 @@ if command -v swiftc >/dev/null 2>&1; then
   <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 PLIST
-  echo "installed: ~/Applications/Horizon.app"
-else
-  echo "no swiftc: run 'xcode-select --install' and re-run to build Horizon.app (or use 'horizon app')"
-fi
-
-command -v container >/dev/null 2>&1 || echo "next: brew install container && container system start"
-command -v mlx_lm.server >/dev/null 2>&1 || echo "next: pip install mlx-lm   (on every Mac you pair)"
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "add ~/.local/bin to your PATH" ;; esac
+echo "installed ~/Applications/Horizon.app"
+command -v container >/dev/null 2>&1 || echo "also needed: brew install container && container system start"
+command -v mlx_lm.server >/dev/null 2>&1 || echo "also needed on every Mac: pip install mlx-lm"
+command -v macmon >/dev/null 2>&1 || echo "for GPU stats on every Mac: brew install macmon"

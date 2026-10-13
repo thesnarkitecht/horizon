@@ -1,5 +1,6 @@
 """End-to-end checks with a fake model server and a fake `container` that runs commands locally."""
 import json, os, subprocess, sys, tempfile, threading, unittest, urllib.error, urllib.request
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
 
@@ -44,7 +45,7 @@ class Test(unittest.TestCase):
         fake.write_text(FAKE.format(py=sys.executable, runs=self.tmp / "runs"))
         fake.chmod(0o755)
         os.environ["PATH"] = f"{fake.parent}:{os.environ['PATH']}"
-        horizon.HOME, horizon.RUNS = self.tmp, self.tmp / "runs"
+        horizon.HOME, horizon.RUNS, horizon.PROJECTS = self.tmp, self.tmp / "runs", self.tmp / "projects"
         horizon.URL = f"http://127.0.0.1:{srv.server_port}/v1/chat/completions"
         horizon.REVIEW_EVERY = 10
 
@@ -82,6 +83,31 @@ class Test(unittest.TestCase):
         self.assertEqual((d / "work" / "PLAN.md").read_text(), plan.read_text())
         out = subprocess.run(["git", "--git-dir", str(origin), "log", "--format=%s", f"horizon/{meta['id']}"], capture_output=True, text=True)
         self.assertEqual(out.stdout.split(), ["add", "b", "seed"])
+
+    def test_swarm_board(self):
+        sid = horizon.new_swarm("shrink model memory", agents=2, budget=10_000)
+        rid = horizon.start(horizon.EXPLORE, 500, project=sid)
+        REPLIES[:] = ["```bash\nboard post 'TASK: try 2-bit weights'\n```", "```bash\nboard read\n```", "DONE"]
+        horizon.work(rid, echo=False)
+        self.assertEqual([p["text"] for p in horizon.board_read(sid)], ["TASK: try 2-bit weights"])
+        self.assertIn("(board: hidden", (horizon.RUNS / rid / "log.txt").read_text())
+        self.assertEqual(horizon.runs(), [])  # swarm agents aren't listed as standalone runs
+        launched = []
+        with mock.patch.object(horizon, "spawn", lambda *a, **k: launched.append(a)), \
+             mock.patch.object(horizon.time, "sleep", side_effect=KeyboardInterrupt):
+            horizon.swarm(sid)
+        parts = sorted(m["hypothesis"] for m in horizon.runs(sid) if m["id"] != rid)
+        self.assertEqual(parts, sorted([horizon.EXPLORE, "try 2-bit weights"]))  # agents' TASK posts come first
+        self.assertEqual(len(launched), 2)
+        p = horizon.project(sid)
+        self.assertEqual((p["status"], p["total"], p["done"]), ("stopped", 3, 1))
+
+    def test_gpu_sample(self):
+        fake = self.tmp / "bin" / "macmon"
+        fake.write_text("#!/bin/sh\necho '" + json.dumps({"gpu_freq_mhz": 1398, "gpu_active_ratio": 0.97, "gpu_power": 61.5,
+                        "memory": {"ram_usage": 192, "ram_total": 256}, "temp": {"gpu_temp_avg": 58.0}}) + "'\n")
+        fake.chmod(0o755)
+        self.assertEqual(horizon.gpu("localhost"), {"host": "localhost", "mhz": 1398, "active": 0.97, "watts": 61.5, "ram": 0.75, "temp": 58.0})
 
     def test_dashboard(self):
         srv = ThreadingHTTPServer(("127.0.0.1", 0), horizon.Dashboard)

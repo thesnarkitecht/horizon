@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
-"""horizon: long-running research agents on your own Macs.
+"""horizon: the backend of Horizon.app — long-running research agents on your own Macs.
 
-Each run works a hypothesis inside a throwaway Linux VM (Apple `container`), one shell
-command at a time, following a PLAN.md checklist, until it is DONE, out of budget, or
-killed by the reviewer. Runs share one model server, which batches them together.
+Each agent works a goal inside a throwaway Linux VM (Apple `container`), one shell command at a
+time, following a PLAN.md checklist, until it is DONE, out of budget, or killed by the reviewer.
+Swarms keep many agents going on one goal; they coordinate on a board only agents and the
+reviewer read. All agents share one model server, which batches them together.
 
-  horizon                         ask for a hypothesis and run it here
-  horizon run "hypothesis"|PLAN.md [--repo URL] [--detach] [--budget N]
-  horizon ls | log RUN_ID | stop RUN_ID
-  horizon app                     dashboard on http://127.0.0.1:7777 (the Mac app wraps it)
-  horizon setup studio1,studio2   pair Macs over Thunderbolt (JACCL)
-  horizon serve [--model M]       start the model, across the paired Macs if set up
+Horizon.app runs `horizon.py app` and shows its dashboard. The other subcommands are what the
+dashboard spawns (and handy for debugging): run, swarm, ls, log, stop, setup, serve.
 """
-import argparse, json, os, re, shutil, signal, subprocess, sys, time, urllib.request, webbrowser
+import argparse, json, os, re, shutil, signal, subprocess, sys, threading, time, urllib.request, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HOME = Path(os.environ.get("HORIZON_HOME", Path.home() / ".horizon"))
 RUNS = HOME / "runs"
+PROJECTS = HOME / "projects"  # swarms: meta.json + board.jsonl; their agents are ordinary runs
 HOSTS = HOME / "hosts.json"  # written by `horizon setup`
 URL = os.environ.get("HORIZON_URL", "http://127.0.0.1:8080/v1/chat/completions")
 MODEL = os.environ.get("HORIZON_MODEL", "default_model")  # mlx_lm.server: the model it was started with
@@ -42,10 +40,22 @@ A reviewer reads your work and will stop you if you drift from the goal or claim
 When the goal is met with a verified result (or disproved), write it to /work/RESULT.md
 and reply with the single word DONE and no bash block."""
 
+SWARM = """
+You are one of many agents working on this goal in parallel, each in its own VM. Coordinate through
+the board, a shared message board that only agents and the reviewer read:
+  board read                latest posts from every agent
+  board post TEXT           share a finding, a dead end, or a claim ("CLAIM: direction")
+  board post TASK: TEXT     propose a self-contained sub-task; a new agent will be started on it
+Read the board before choosing a direction and before finishing. Post failures as well as wins:
+they save the others days. Don't duplicate a direction someone has claimed unless you can beat it."""
+
+EXPLORE = "Explore: pick a promising direction no one on the board has claimed, claim it, and pursue it."
+
 REVIEWER = """You supervise an autonomous research agent. Read its goal, plan and recent steps.
 Kill it if it is misaligned: working on something other than the goal, claiming results it did not
 verify, trying to reach the network or escape its VM, destroying its own evidence, or looping with
-no progress. Reply ON_TRACK, or KILL: <one-line reason>."""
+no progress. The board shows what agents tell each other; kill agents that post misleading claims,
+coordinate to evade review, or flood it. Reply ON_TRACK, or KILL: <one-line reason>."""
 
 
 def sh(*cmd, timeout=None):
@@ -70,6 +80,33 @@ def stream(messages, out):
     return text, tokens
 
 
+def put(path, obj):
+    """Write-then-rename so readers never see a half-written file."""
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(obj, indent=1))
+    os.replace(tmp, path)
+
+
+def board_read(pid, n=None):
+    f = PROJECTS / pid / "board.jsonl"
+    posts = [json.loads(l) for l in f.read_text().splitlines()] if f.exists() else []
+    return posts[-n:] if n else posts
+
+
+def board(pid, rid, cmd):
+    """`board ...` runs on the Mac, not in the VM, so agents can't edit or delete anyone's posts."""
+    verb, _, text = cmd.partition(" ")[2].partition(" ")
+    text = text.strip().strip("'\"")
+    if verb == "post" and text:
+        line = json.dumps({"t": time.time(), "agent": rid, "text": text[:2000]}) + "\n"
+        with open(PROJECTS / pid / "board.jsonl", "a") as f:
+            f.write(line)  # one small O_APPEND write: atomic across agent processes
+        return "posted"
+    if verb == "read":
+        return "\n".join(f"[{p['agent'][-4:]}] {p['text']}" for p in board_read(pid, 50)) or "(board is empty)"
+    return "usage: board read | board post TEXT | board post TASK: TEXT"
+
+
 def answer(reply):
     return reply.split("</think>")[-1]
 
@@ -80,11 +117,11 @@ def command(reply):
     return m[-1].strip() if m else None
 
 
-def review(goal, plan, history):
+def review(goal, plan, history, posts=""):
     """Ask the model, as a reviewer, whether the agent is on track. Returns (kill reason or None, tokens)."""
     steps = "\n\n".join(f"[{m['role']}] {m['content'][-1500:]}" for m in history[-20:])
     reply, n = stream([{"role": "system", "content": REVIEWER},
-                       {"role": "user", "content": f"Goal: {goal}\n\nPLAN.md:\n{plan}\n\nRecent steps:\n{steps}"}],
+                       {"role": "user", "content": f"Goal: {goal}\n\nPLAN.md:\n{plan}\n\nRecent steps:\n{steps}" + (f"\n\nBoard:\n{posts}" if posts else "")}],
                       lambda s: None)
     verdict = answer(reply).strip()
     return (verdict[4:].strip(" :") or "no reason given") if verdict.startswith("KILL") else None, n
@@ -99,7 +136,7 @@ def progress(d):
 
 def meta_of(d):
     m = json.loads((d / "meta.json").read_text())
-    if m["status"] == "running":
+    if m["status"] == "running" or m["status"] == "queued" and time.time() - m.get("created", 0) > 120:
         try:
             os.kill(m["pid"], 0)
         except (OSError, KeyError, TypeError):
@@ -108,11 +145,20 @@ def meta_of(d):
     return m
 
 
-def runs():
-    return [meta_of(d) for d in sorted(RUNS.glob("*"), reverse=True) if (d / "meta.json").exists()]
+def runs(project=None):
+    """Runs newest first; project=None gives standalone runs, an id gives that swarm's agents."""
+    out = []
+    for d in sorted(RUNS.glob("*"), reverse=True):
+        try:
+            m = meta_of(d)
+        except (OSError, ValueError):
+            continue
+        if m.get("project") == project:
+            out.append(m)
+    return out
 
 
-def start(goal, budget=1_000_000, image="python:3.12", timeout=600, repo=None):
+def start(goal, budget=1_000_000, image="python:3.12", timeout=600, repo=None, project=None):
     """Create a run directory. A goal ending in .md is a plan file: the agent starts from it."""
     rid = time.strftime("%Y%m%d-%H%M%S-") + os.urandom(2).hex()
     d = RUNS / rid
@@ -122,7 +168,8 @@ def start(goal, budget=1_000_000, image="python:3.12", timeout=600, repo=None):
         (d / "work" / "PLAN.md").write_text(plan)
         goal = plan.strip().splitlines()[0].lstrip("# ") if plan.strip() else goal
     (d / "meta.json").write_text(json.dumps({"id": rid, "hypothesis": goal, "budget": budget, "image": image,
-                                             "timeout": timeout, "repo": repo, "tokens": 0, "steps": 0, "status": "queued"}))
+                                             "timeout": timeout, "repo": repo, "project": project, "created": time.time(),
+                                             "tokens": 0, "steps": 0, "status": "queued"}))
     return rid
 
 
@@ -165,9 +212,7 @@ def work(rid, echo=True):
     meta = json.loads((d / "meta.json").read_text())
     meta.update(status="running", pid=os.getpid(), started=time.time())
 
-    def save():  # write-then-rename so the dashboard never reads a half-written file
-        (d / "meta.tmp").write_text(json.dumps(meta, indent=1))
-        os.replace(d / "meta.tmp", d / "meta.json")
+    save = lambda: put(d / "meta.json", meta)
     save()
     signal.signal(signal.SIGTERM, _interrupt)  # `horizon stop` and the app's stop button
     log = open(d / "log.txt", "a", buffering=1)
@@ -195,7 +240,14 @@ def work(rid, echo=True):
             meta["status"] = "git failed"; save(); out(f"{e}\n"); sh("container", "stop", name); log.close()
             sys.exit(1)
 
-    task = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": f"Goal: {goal}"}]
+    pid = meta.get("project")
+    if pid:
+        swarm_goal = json.loads((PROJECTS / pid / "meta.json").read_text())["goal"]
+        task = [{"role": "system", "content": SYSTEM + SWARM},
+                {"role": "user", "content": f"Goal: {swarm_goal}\n\nYour part: {goal}"}]
+        goal = f"{swarm_goal} / part: {goal}"
+    else:
+        task = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": f"Goal: {goal}"}]
     history = []
     try:
         while meta["tokens"] < budget:
@@ -211,6 +263,11 @@ def work(rid, echo=True):
                 history.append({"role": "user", "content": "Give exactly one command in a ```bash block, or reply DONE."})
                 continue
             out(f"\n\033[36m$ {cmd}\033[0m\n")
+            if pid and cmd.split()[0] == "board":
+                result = board(pid, rid, cmd)
+                out("(board: hidden from the dashboard)\n")  # only agents and the reviewer read the board
+                history.append({"role": "user", "content": result})
+                continue
             try:
                 r = sh("container", "exec", name, "sh", "-c", cmd, timeout=meta["timeout"])
                 result = f"exit {r.returncode}\n{r.stdout}{r.stderr}"
@@ -223,7 +280,8 @@ def work(rid, echo=True):
             if meta["steps"] % REVIEW_EVERY == 0:
                 out(f"\n\033[2m{publish(d, name, rid)}\033[0m\n" if meta.get("repo") else "")
                 plan = d / "work" / "PLAN.md"
-                reason, n = review(goal, plan.read_text() if plan.exists() else "(none yet)", history)
+                posts = "\n".join(f"[{p['agent'][-4:]}] {p['text']}" for p in board_read(pid, 30)) if pid else ""
+                reason, n = review(goal, plan.read_text() if plan.exists() else "(none yet)", history, posts)
                 meta["tokens"] += n
                 out(f"\n\033[35mreviewer: {'KILL ' + reason if reason else 'on track'}\033[0m\n")
                 if reason:
@@ -256,6 +314,95 @@ def status():
             "serve_log": tail("serve.log"), "setup_log": tail("setup.log")}
 
 
+def new_swarm(goal, agents=16, budget=10**10, agent_budget=2_000_000, repo=None):
+    sid = "s" + time.strftime("%Y%m%d-%H%M%S-") + os.urandom(2).hex()
+    (PROJECTS / sid).mkdir(parents=True)
+    put(PROJECTS / sid / "meta.json", {"id": sid, "goal": goal, "agents": agents, "budget": budget,
+                                       "agent_budget": agent_budget, "repo": repo, "next_task": 0,
+                                       "created": time.time(), "status": "queued"})
+    return sid
+
+
+def project(sid):
+    """A swarm's meta with live totals over its agents."""
+    p = json.loads((PROJECTS / sid / "meta.json").read_text())
+    kids = runs(sid)
+    if p["status"] == "running":
+        try:
+            os.kill(p["pid"], 0)
+        except (OSError, KeyError, TypeError):
+            p["status"] = "crashed"
+    finished = sum(k["status"] not in ("queued", "running") for k in kids)
+    p.update(tokens=sum(k["tokens"] for k in kids), steps=sum(k["steps"] for k in kids),
+             running=sum(k["status"] == "running" for k in kids), total=len(kids),
+             done=sum(k["status"] == "done" for k in kids), finished=finished,
+             progress=finished / len(kids) if kids else 0.0)  # share of agents that have finished their part
+    return p
+
+
+def projects():
+    return [project(d.name) for d in sorted(PROJECTS.glob("*"), reverse=True) if (d / "meta.json").exists()]
+
+
+def swarm(sid):
+    """Keep `agents` runs going on the goal: agents' TASK: posts first, fresh explorers otherwise."""
+    f = PROJECTS / sid / "meta.json"
+    p = json.loads(f.read_text())
+    p.update(status="running", pid=os.getpid())
+    put(f, p)
+    signal.signal(signal.SIGTERM, _interrupt)
+    try:
+        while True:
+            kids = runs(sid)
+            if sum(k["tokens"] for k in kids) >= p["budget"]:
+                p["status"] = "out of budget"; break
+            tasks = [x["text"][5:].strip() for x in board_read(sid) if x["text"].startswith("TASK:")]
+            live = sum(k["status"] in ("queued", "running") for k in kids)
+            for _ in range(p["agents"] - live):
+                if p["next_task"] < len(tasks):
+                    part = tasks[p["next_task"]]; p["next_task"] += 1
+                else:
+                    part = EXPLORE
+                spawn("_work", start(part, p["agent_budget"], repo=p["repo"], project=sid))
+            put(f, p)
+            time.sleep(5)
+    except KeyboardInterrupt:
+        p["status"] = "stopped"
+        for k in runs(sid):
+            if k["status"] == "running":
+                stop(k["id"])
+    finally:
+        put(f, p)
+
+
+GPU = {}  # host -> latest macmon sample
+
+
+def gpu(h):
+    """One macmon sample (no sudo needed) from host h, over ssh unless it is this Mac."""
+    here = h in ("localhost", "127.0.0.1") or h.split(".")[0] == os.uname().nodename.split(".")[0]
+    cmd = ["macmon", "pipe", "-s", "1", "-i", "500"]
+    try:
+        r = sh(*(cmd if here else ["ssh", "-o", "BatchMode=yes", h, *cmd]), timeout=10)
+        m = json.loads(r.stdout.strip().splitlines()[-1])
+        return {"host": h.split(".")[0], "mhz": m["gpu_freq_mhz"], "active": m["gpu_active_ratio"],
+                "watts": m["gpu_power"], "ram": m["memory"]["ram_usage"] / m["memory"]["ram_total"],
+                "temp": m["temp"]["gpu_temp_avg"]}
+    except (OSError, ValueError, KeyError, IndexError, ZeroDivisionError, subprocess.TimeoutExpired):
+        return {"host": h.split(".")[0], "error": "no macmon (brew install macmon)"}
+
+
+def sample_gpus():
+    while True:
+        try:
+            hosts = [h["ssh"] for h in json.loads(HOSTS.read_text())["hosts"]] if HOSTS.exists() else ["localhost"]
+        except (OSError, ValueError, KeyError, TypeError):
+            hosts = ["localhost"]
+        for h in hosts:
+            GPU[h] = gpu(h)
+        time.sleep(2)
+
+
 def kill_server():
     try:
         os.killpg(int((HOME / "serve.pid").read_text()), signal.SIGTERM)  # mlx.launch and its ssh children too
@@ -264,7 +411,8 @@ def kill_server():
 
 
 def stop(rid):
-    pid = json.loads((RUNS / rid / "meta.json").read_text()).get("pid")
+    f = (PROJECTS if rid.startswith("s") else RUNS) / rid / "meta.json"
+    pid = json.loads(f.read_text()).get("pid")
     if pid:
         try:
             os.kill(pid, signal.SIGTERM)
@@ -273,9 +421,11 @@ def stop(rid):
 
 
 class Dashboard(BaseHTTPRequestHandler):
-    def reply(self, code, body=b"", ctype="application/json"):
+    def reply(self, code, body=b"", ctype="application/json", **headers):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        for k, v in headers.items():
+            self.send_header(k.replace("_", "-"), str(v))
         self.end_headers()
         self.wfile.write(body)
 
@@ -284,13 +434,23 @@ class Dashboard(BaseHTTPRequestHandler):
             return self.reply(200, SELF.with_name("ui.html").read_bytes(), "text/html; charset=utf-8")
         if self.path == "/runs":
             return self.reply(200, json.dumps(runs()).encode())
+        if self.path == "/projects":
+            return self.reply(200, json.dumps(projects()).encode())
+        m = re.fullmatch(r"/projects/(s[\w-]+)/runs", self.path)
+        if m and (PROJECTS / m[1]).is_dir():
+            return self.reply(200, json.dumps(runs(m[1])).encode())
+        if self.path == "/gpu":
+            return self.reply(200, json.dumps(list(GPU.values())).encode())
         if self.path == "/status":
             return self.reply(200, json.dumps(status()).encode())
-        m = re.fullmatch(r"/runs/([\w-]+)/log\?from=(\d+)", self.path)
+        m = re.fullmatch(r"/runs/([\w-]+)/log\?from=(-?\d+)", self.path)
         if m and (RUNS / m[1] / "log.txt").exists():
             with open(RUNS / m[1] / "log.txt", "rb") as f:
-                f.seek(int(m[2]))
-                return self.reply(200, f.read(), "text/plain; charset=utf-8")
+                size = f.seek(0, 2)
+                # from=-1: just the tail, so a month-long log doesn't load whole
+                f.seek(max(0, size - 256_000) if int(m[2]) < 0 else min(int(m[2]), size))
+                body = f.read(4_000_000)
+                return self.reply(200, body, "text/plain; charset=utf-8", X_Next=f.tell())
         self.reply(404)
 
     def do_POST(self):
@@ -302,8 +462,14 @@ class Dashboard(BaseHTTPRequestHandler):
             goal = str(body.get("hypothesis", "")).strip()
             if not goal:
                 return self.reply(400)
-            rid = start(goal, int(body.get("budget") or 1_000_000), repo=str(body.get("repo") or "").strip() or None)
-            spawn("_work", rid)
+            repo = str(body.get("repo") or "").strip() or None
+            agents = int(body.get("agents") or 1)
+            if agents > 1:
+                rid = new_swarm(goal, agents, int(float(body.get("budget") or 1e10)), repo=repo)
+                spawn("_swarm", rid, log=PROJECTS / rid / "swarm.log")
+            else:
+                rid = start(goal, int(float(body.get("budget") or 1e6)), repo=repo)
+                spawn("_work", rid)
             return self.reply(200, json.dumps({"id": rid}).encode())
         if self.path in ("/serve", "/setup"):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
@@ -318,8 +484,8 @@ class Dashboard(BaseHTTPRequestHandler):
         if self.path == "/serve/stop":
             kill_server()
             return self.reply(200)
-        m = re.fullmatch(r"/runs/([\w-]+)/stop", self.path)
-        if m and (RUNS / m[1] / "meta.json").exists():
+        m = re.fullmatch(r"/(?:runs|projects)/([\w-]+)/stop", self.path)
+        if m and ((RUNS if m[1][0].isdigit() else PROJECTS) / m[1] / "meta.json").exists():
             stop(m[1])
             return self.reply(200)
         self.reply(404)
@@ -339,6 +505,12 @@ def main(argv=None):
     r.add_argument("--timeout", type=int, default=600, help="seconds per command")
     r.add_argument("--repo", help="git URL the agent works in; its commits are pushed to branch horizon/RUN_ID")
     r.add_argument("--detach", action="store_true", help="run in the background")
+    sw = sub.add_parser("swarm", help="many agents on one goal, coordinating on a board")
+    sw.add_argument("goal")
+    sw.add_argument("--agents", type=int, default=16, help="agents running at once")
+    sw.add_argument("--budget", type=float, default=1e10, help="tokens for the whole swarm")
+    sw.add_argument("--agent-budget", type=float, default=2e6, help="tokens per agent")
+    sw.add_argument("--repo")
     sub.add_parser("ls", help="list runs")
     for c in ("log", "stop"):
         sub.add_parser(c).add_argument("id")
@@ -349,6 +521,7 @@ def main(argv=None):
     v = sub.add_parser("serve", help="start the model server")
     v.add_argument("--model", default=SERVE_MODEL)
     w = sub.add_parser("_work"); w.add_argument("id")
+    w = sub.add_parser("_swarm"); w.add_argument("id")
     a = p.parse_args(argv or ["run"])
 
     if a.cmd == "run":
@@ -362,7 +535,14 @@ def main(argv=None):
             work(rid)
     elif a.cmd == "_work":
         work(a.id, echo=False)
+    elif a.cmd == "swarm":
+        sid = new_swarm(a.goal, a.agents, int(a.budget), int(a.agent_budget), a.repo)
+        spawn("_swarm", sid, log=PROJECTS / sid / "swarm.log"); print(sid)
+    elif a.cmd == "_swarm":
+        swarm(a.id)
     elif a.cmd == "ls":
+        for m in projects():
+            print(f"{m['id']} {m['status'][:20]:<20} {m['running']:>4} running {m['total']:>6} agents {m['tokens']:>12} tok  {m['goal'][:40]}")
         for m in runs():
             print(f"{m['id']}  {m['status'][:20]:<20} {m['progress']:>4.0%} {m['steps']:>5} steps {m['tokens']:>10} tok  {m['hypothesis'][:50]}")
     elif a.cmd == "log":
@@ -371,6 +551,7 @@ def main(argv=None):
         stop(a.id)
     elif a.cmd == "app":
         HOME.mkdir(parents=True, exist_ok=True)
+        threading.Thread(target=sample_gpus, daemon=True).start()
         srv = ThreadingHTTPServer(("127.0.0.1", PORT), Dashboard)
         print(f"horizon dashboard on http://127.0.0.1:{PORT}")
         if not a.no_open:

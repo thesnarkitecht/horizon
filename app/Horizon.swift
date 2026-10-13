@@ -1,4 +1,4 @@
-// Horizon.app: a native window onto the `horizon app` dashboard, which it starts and stops.
+// Horizon.app: the whole product. It starts the bundled backend (horizon.py) and shows its dashboard.
 // Built by install.sh with: swiftc -O Horizon.swift -o Horizon.app/Contents/MacOS/Horizon
 import Cocoa
 import WebKit
@@ -10,9 +10,10 @@ class App: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     let url = URL(string: "http://127.0.0.1:7777")!
 
     func applicationDidFinishLaunching(_ n: Notification) {
-        let p = Process()  // login shell so python3 and mlx tools are on the user's PATH
+        let backend = Bundle.main.path(forResource: "horizon", ofType: "py")!
+        let p = Process()  // login shell so python3, container and mlx tools are on the user's PATH
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        p.arguments = ["-lc", "exec python3 ~/.horizon/bin/horizon.py app --no-open"]
+        p.arguments = ["-lc", "exec python3 \"$0\" app --no-open", backend]
         try? p.run()  // exits at once if a dashboard is already running; the window still connects to it
         server = p
 
