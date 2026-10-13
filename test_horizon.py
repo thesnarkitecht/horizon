@@ -215,6 +215,20 @@ class Test(unittest.TestCase):
         self.assertEqual([r["elo"] for r in rows], sorted((r["elo"] for r in rows), reverse=True))
         self.assertEqual(horizon.leader(sid), rows[0]["id"])
 
+    def test_compaction_thought_runtime(self):
+        cmd = lambda c: f"```bash\n{c}\n```"
+        REPLIES[:] = [cmd("echo 'Trying per-channel scales next.' > THOUGHT.md"), cmd("echo one"), cmd("echo two"),
+                      "Verified: per-channel 2-bit loses 0.8 ppl (eval.py). Next: lattice codebooks.", "DONE"]
+        with mock.patch.object(horizon, "KEEP", 4):
+            horizon.main(["run", "x", "--budget", "10000"])
+        d, meta = self.last()
+        self.assertEqual(meta["status"], "done")
+        self.assertTrue((d / "memory.md").read_text().startswith("Verified: per-channel"))  # kept for revives
+        self.assertIn("compacted older steps", (d / "log.txt").read_text())
+        m = horizon.meta_of(d)
+        self.assertEqual(m["thought"], "Trying per-channel scales next.")
+        self.assertGreater(m["runtime"], 0)
+
     def test_gpu_sample(self):
         fake = self.tmp / "bin" / "macmon"
         fake.write_text("#!/bin/sh\necho '" + json.dumps({"gpu_freq_mhz": 1398, "gpu_active_ratio": 0.97, "gpu_power": 61.5,
@@ -227,7 +241,7 @@ class Test(unittest.TestCase):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         base = f"http://127.0.0.1:{srv.server_port}"
         self.assertEqual(json.load(urllib.request.urlopen(base + "/runs")), [])
-        self.assertIn(b"what should the lab find out?", urllib.request.urlopen(base + "/").read())
+        self.assertIn(b"What should the lab find out?", urllib.request.urlopen(base + "/").read())
         self.assertFalse(json.load(urllib.request.urlopen(base + "/status"))["up"])
 
         def post(path, body, headers={"X-Horizon": "1"}):

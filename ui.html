@@ -3,182 +3,335 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>horizon</title>
+<title>Horizon</title>
 <style>
-:root { --bg: #fbfbf8; --fg: #111; --dim: #6a6a6a; --rule: #d6d6d0; --acc: #0000f2; --ok: #137a2e; --bad: #c4231b; --sel: #ececE6; }
+:root {
+  --page: #e4e6eb; --page2: #d7dae1; --tile: rgb(255 255 255 / .8); --edge: rgb(0 0 0 / .06);
+  --ink: #1d1d1f; --sub: #6e6e73; --faint: #c7c7cc; --fill: rgb(120 120 128 / .14);
+  --blue: #007aff; --green: #248a3d; --ring: #34c759; --orange: #c93400; --indigo: #5856d6; --red: #d70015; --teal: #0071a4; --yellow: #a05a00;
+  --text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --round: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --shadow: 0 1px 1px rgb(0 0 0 / .03), 0 6px 20px rgb(0 0 0 / .07);
+}
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0b0b0b; --fg: #d6d6d6; --dim: #8a8a8a; --rule: #2a2a2a; --acc: #8c8cff; --ok: #4cc26a; --bad: #ff6b60; --sel: #1a1a1a; }
+  :root { --page: #121214; --page2: #1b1b1f; --tile: rgb(44 44 48 / .78); --edge: rgb(255 255 255 / .07);
+          --ink: #f5f5f7; --sub: #98989f; --faint: #48484c; --fill: rgb(120 120 128 / .24);
+          --blue: #0a84ff; --green: #30d158; --ring: #30d158; --orange: #ff9f0a; --indigo: #7d7aff; --red: #ff453a; --teal: #64d2ff; --yellow: #ffd60a;
+          --shadow: 0 1px 1px rgb(0 0 0 / .2), 0 10px 30px rgb(0 0 0 / .35); }
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+html { background: linear-gradient(160deg, var(--page), var(--page2)) fixed; min-height: 100%; }
+body { margin: 0; color: var(--ink); font: 14px/1.4 var(--text); -webkit-font-smoothing: antialiased; }
 button, input { font: inherit; color: inherit; }
-main { max-width: 1100px; margin: 0 auto; padding: 18px 24px 60px; }
-.dim { color: var(--dim); }
-.acc { color: var(--acc); } .ok { color: var(--ok); } .bad { color: var(--bad); }
-hr { border: 0; border-top: 1px dashed var(--rule); margin: 14px 0; }
-.btn { background: none; border: 0; padding: 0; cursor: pointer; color: var(--acc); }
-.btn::before { content: "["; color: var(--dim); } .btn::after { content: "]"; color: var(--dim); }
-.btn:hover { text-decoration: underline; }
-.btn:focus-visible, .row:focus-visible, .grid button:focus-visible { outline: 1px solid var(--acc); outline-offset: 2px; }
-input { background: none; border: 0; border-bottom: 1px solid var(--rule); padding: 2px 0; outline: none; min-width: 0; }
-input:focus { border-bottom-color: var(--acc); }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 22px 24px 64px; }
 
-.top { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.top b { font-weight: 700; letter-spacing: .04em; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.brand { font: 700 22px/1 var(--round); letter-spacing: -.01em; }
+.pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; background: var(--tile); border: .5px solid var(--edge); box-shadow: var(--shadow); color: var(--sub); font-size: 13px; }
+.pill b { color: var(--ink); font-weight: 600; }
+.led { width: 8px; height: 8px; border-radius: 50%; background: var(--red); }
+.led.on { background: var(--ring); }
+.gear { border: 0; background: none; padding: 0 0 0 4px; color: var(--sub); font-size: 15px; }
 
-.ask { display: flex; gap: 10px; align-items: baseline; }
-.ask > span { color: var(--acc); font-weight: 700; }
-.ask #goal { flex: 1; font-size: 15px; border: 0; }
-.opts { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; margin-top: 6px; padding-left: 20px; }
-.opts label { display: flex; gap: 8px; }
-.opts #agents, .opts #budget { width: 60px; } .opts #repo { width: 280px; max-width: 60vw; }
+form.ask { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 18px; border-radius: 18px; background: var(--tile); border: .5px solid var(--edge); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
+form.ask:focus-within { box-shadow: var(--shadow), 0 0 0 3px rgb(0 122 255 / .25); }
+.ask #goal { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 17px; padding: 6px 0; }
+.ask #goal::placeholder { color: var(--sub); }
+.chips { display: flex; gap: 6px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 9px; background: var(--fill); color: var(--sub); font-size: 12px; }
+.chip input { width: 3.2em; border: 0; background: none; outline: none; color: var(--ink); font-weight: 600; text-align: right; padding: 0; }
+.chip.repo input { width: 9em; text-align: left; font-weight: 500; }
+.go { border: 0; border-radius: 12px; background: var(--blue); color: #fff; font-weight: 600; padding: 9px 16px; }
 
-.row { display: grid; grid-template-columns: 36px 1fr auto; gap: 14px; padding: 3px 6px; margin: 0 -6px; cursor: pointer; white-space: nowrap; }
-.row:hover, .row.sel { background: var(--sel); }
-.row .t { overflow: hidden; text-overflow: ellipsis; }
-.bar { letter-spacing: -.05em; }
+nav.research { display: flex; gap: 8px; overflow-x: auto; padding: 16px 2px 4px; scrollbar-width: none; }
+.tab { display: inline-flex; align-items: center; gap: 9px; flex-shrink: 0; max-width: 320px; padding: 7px 14px 7px 8px; border-radius: 999px; border: .5px solid var(--edge); background: var(--tile); box-shadow: var(--shadow); text-align: left; }
+.tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.tab small { color: var(--sub); font: 600 12px var(--round); }
+.tab[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: transparent; }
+.tab[aria-pressed="true"] small { color: var(--page); opacity: .7; }
 
-.focus h1 { font-size: 13px; font-weight: 700; margin: 0 0 4px; }
-.ms { list-style: none; margin: 6px 0 0; padding: 0; }
-.ms li { display: flex; gap: 10px; }
-.ms li > span:first-child { flex-shrink: 0; white-space: nowrap; }
-.ms li.now { font-weight: 700; }
-.grid { display: flex; flex-wrap: wrap; gap: 0; margin-top: 6px; line-height: 1; max-height: 240px; overflow: auto; }
-.grid button { background: none; border: 0; padding: 1px; width: 13px; height: 15px; cursor: pointer; color: var(--dim); font-size: 12px; line-height: 1; }
-.grid button.running { color: var(--acc); } .grid button.done { color: var(--ok); } .grid button.bad { color: var(--bad); }
-.grid button.queued { color: var(--rule); } .grid button.sel { background: var(--fg); color: var(--bg); }
-table.lb { border-collapse: collapse; margin-top: 6px; width: 100%; }
-table.lb th { text-align: left; font-weight: 400; color: var(--dim); padding: 0 14px 2px 0; }
-table.lb td { padding: 1px 14px 1px 0; white-space: nowrap; }
-table.lb td:last-child { white-space: normal; width: 100%; }
-table.lb tbody tr { cursor: pointer; } table.lb tbody tr:hover, table.lb tr.sel { background: var(--sel); }
-pre { margin: 6px 0 0; max-height: 50vh; overflow: auto; white-space: pre-wrap; word-break: break-word; border-left: 1px dashed var(--rule); padding-left: 12px; }
-.a2 { color: var(--dim); } .a36 { color: var(--acc); } .a35 { color: #b26a00; }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 172px; gap: 16px; margin-top: 16px; }
+.w { position: relative; overflow: hidden; border-radius: 22px; padding: 15px 16px; background: var(--tile); border: .5px solid var(--edge); box-shadow: var(--shadow); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); display: flex; flex-direction: column; min-width: 0; }
+.w.m { grid-column: span 2; } .w.l { grid-column: span 2; grid-row: span 2; } .w.xl { grid-column: span 4; grid-row: span 2; } .w.tall { grid-row: span 2; }
+.lab { font-size: 13px; font-weight: 600; display: flex; gap: 6px; align-items: baseline; white-space: nowrap; }
+.lab .s { color: var(--sub); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.big { font: 600 44px/1 var(--round); letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: auto; }
+.big small { font-size: 15px; font-weight: 600; color: var(--sub); letter-spacing: 0; margin-left: 3px; }
+.foot { color: var(--sub); font-size: 12px; margin-top: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-dialog { background: var(--bg); color: var(--fg); border: 1px solid var(--rule); padding: 18px 22px; width: min(720px, calc(100vw - 24px)); }
-dialog::backdrop { background: rgb(0 0 0 / .4); }
-dialog .f { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; flex-wrap: wrap; }
-dialog .f > span:first-child { min-width: 90px; color: var(--dim); white-space: nowrap; }
-dialog .f input { flex: 1; }
-dialog pre { max-height: 140px; }
-@media (max-width: 700px) { table.lb :is(th, td):is(:nth-child(3), :nth-child(5)) { display: none; }
-  main { padding: 14px 14px 40px; } .row { grid-template-columns: 28px 1fr; } .row .r { grid-column: 2; } .bar { display: none; } }
+.ringbox { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
+.ringbox .big { margin: 0; }
+.ring circle { fill: none; stroke-linecap: round; }
+.ring .tr { stroke: var(--fill); }
+.ring .bar { stroke: var(--ring); transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1); }
+
+.thought { margin-top: 10px; font: 500 17px/1.38 var(--text); letter-spacing: -.005em; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.thought.none { color: var(--sub); font-weight: 400; }
+
+ul.ms { list-style: none; margin: 10px 0 0; padding: 0; overflow: auto; flex: 1; }
+ul.ms li { display: grid; grid-template-columns: 20px 1fr; gap: 8px; padding: 6px 0; border-top: .5px solid var(--fill); font-size: 13.5px; }
+ul.ms li:first-child { border-top: 0; }
+ul.ms .c { width: 17px; height: 17px; border-radius: 50%; border: 1.5px solid var(--faint); margin-top: 1px; display: grid; place-items: center; font-size: 10px; color: #fff; }
+ul.ms li.done .c { background: var(--ring); border-color: var(--ring); }
+ul.ms li.done { color: var(--sub); }
+ul.ms li.now .c { border-color: var(--blue); box-shadow: inset 0 0 0 3px var(--tile), inset 0 0 0 9px var(--blue); }
+ul.ms li.now { font-weight: 600; }
+.empty { color: var(--sub); margin-top: auto; font-size: 13px; }
+
+.spark { width: 100%; height: 34px; margin-top: 8px; }
+.mac { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-top: 8px; font-size: 12px; }
+.mac b { font: 600 20px var(--round); font-variant-numeric: tabular-nums; }
+.cap { grid-column: span 2; height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.cap i { display: block; height: 100%; border-radius: 3px; background: var(--ring); transition: width .6s; }
+
+table.lb { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.lb td { padding: 6px 0; border-top: .5px solid var(--fill); white-space: nowrap; }
+table.lb tr:first-child td { border-top: 0; }
+table.lb td.d { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
+table.lb td.r { color: var(--sub); width: 26px; padding-right: 6px; font-weight: 600; }
+table.lb td.e { font: 600 13px var(--round); text-align: right; padding-left: 8px; }
+table.lb td.k { text-align: right; }
+.sc { display: inline-block; min-width: 46px; text-align: center; padding: 2px 6px; border-radius: 6px; background: var(--fill); font: 600 12px var(--round); }
+table.lb tbody tr { cursor: pointer; } table.lb tbody tr:hover td, table.lb tr.sel td { color: var(--blue); }
+
+.dots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; overflow: auto; align-content: flex-start; flex: 1; }
+.dots button { width: 10px; height: 10px; border-radius: 3px; border: 0; padding: 0; background: var(--fill); }
+.dots .running { background: var(--blue); } .dots .done { background: var(--ring); } .dots .bad { background: var(--red); } .dots .queued { background: var(--faint); }
+.dots .sel { outline: 2px solid var(--ink); outline-offset: 1px; }
+.legend { display: flex; gap: 12px; font-size: 11.5px; color: var(--sub); margin-top: 8px; }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+
+#wsub { padding-right: 76px; }
+#engine { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 62vw; }
+.acts { position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; }
+.mini { border: 0; border-radius: 8px; padding: 4px 10px; background: var(--fill); color: var(--ink); font-size: 12px; font-weight: 600; }
+pre.log { margin: 10px 0 0; flex: 1; overflow: auto; font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--ink); }
+.a2 { color: var(--sub); } .a36 { color: var(--blue); } .a35 { color: var(--orange); }
+
+.welcome { grid-column: span 4; grid-row: span 2; justify-content: center; align-items: flex-start; padding: 32px; }
+.welcome h1 { font: 700 34px/1.1 var(--round); margin: 0 0 8px; letter-spacing: -.02em; }
+.welcome p { color: var(--sub); max-width: 46ch; margin: 0; font-size: 15px; }
+
+dialog { border: .5px solid var(--edge); border-radius: 16px; background: var(--page); color: var(--ink); padding: 0; width: min(560px, calc(100vw - 24px)); box-shadow: 0 30px 80px rgb(0 0 0 / .35); }
+dialog::backdrop { background: rgb(0 0 0 / .25); }
+.sheet { padding: 18px 20px 20px; }
+.sheet h2 { font: 700 17px var(--text); margin: 0 0 14px; display: flex; justify-content: space-between; align-items: center; }
+.group { background: var(--tile); border-radius: 12px; border: .5px solid var(--edge); margin-bottom: 16px; overflow: hidden; }
+.group h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--sub); margin: 14px 0 6px 4px; }
+.fr { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: .5px solid var(--fill); font-size: 13.5px; }
+.fr:first-child { border-top: 0; }
+.fr > span:first-child { width: 110px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr input[type=text], .fr input[type=password], .fr input:not([type]) { flex: 1; min-width: 0; border: 0; background: none; outline: none; text-align: right; color: var(--sub); }
+.fr input:focus { color: var(--ink); }
+.seg { display: inline-flex; background: var(--fill); border-radius: 8px; padding: 2px; margin-left: auto; }
+.seg button { border: 0; background: none; padding: 4px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--tile); box-shadow: 0 1px 3px rgb(0 0 0 / .15); }
+.fr .mini.blue { background: var(--blue); color: #fff; }
+.note { color: var(--sub); font-size: 12px; padding: 0 4px; }
+pre.elog { margin: 0; max-height: 120px; overflow: auto; font: 11px/1.5 var(--mono); color: var(--sub); white-space: pre-wrap; padding: 10px 14px; }
+
+@media (max-width: 860px) { .grid { grid-template-columns: repeat(2, 1fr); } .w.xl, .welcome { grid-column: span 2; } .chip.repo { display: none; } }
+@media (max-width: 520px) { .thought { font-size: 15px; -webkit-line-clamp: 3; } .wrap { padding: 14px 14px 48px; } .grid { gap: 12px; grid-auto-rows: 158px; } .chips .chip:not(.repo) { display: none; } .big { font-size: 38px; } }
+@media (prefers-reduced-motion: reduce) { .ring .bar, .cap i { transition: none; } }
 </style>
 </head>
 <body>
-<main>
-  <div class="top"><span><b>horizon</b> <span class="dim">· research lab</span></span>
-    <span><span id="status" class="dim">engine …</span> <button class="btn" id="setBtn" type="button">settings</button></span></div>
-  <hr>
-  <form id="new">
-    <label class="ask"><span>&gt;</span><input id="goal" placeholder="what should the lab find out?" aria-label="research goal" autocomplete="off"></label>
-    <div class="opts dim">
-      <label>agents <input id="agents" type="number" min="1" value="16"></label>
-      <label>budget <input id="budget" value="10B" aria-label="token budget"></label>
-      <label>repo <input id="repo" placeholder="optional git url"></label>
-      <button class="btn">start ↵</button>
-    </div>
-  </form>
-  <hr>
-  <div id="list"></div>
-  <div id="focus" class="focus" hidden></div>
-</main>
+<div class="wrap">
+  <header>
+    <div class="brand">Horizon</div>
+    <div class="pill" id="pill"><span class="led" id="led"></span><span id="engine">Engine off</span><button class="gear" id="gear" type="button" aria-label="Settings">⚙︎</button></div>
+  </header>
 
-<dialog id="set">
-  <div class="top"><b>settings</b><button class="btn" type="button" id="closeSet">close</button></div>
-  <hr>
-  <div class="dim">model source</div>
-  <div class="f"><span>use</span><label><input type="radio" name="src" value="local" checked> local engine</label><label><input type="radio" name="src" value="api"> api key</label></div>
-  <div id="apiFields" hidden>
-    <div class="f"><span>url</span><input id="url" placeholder="https://openrouter.ai/api/v1/chat/completions"></div>
-    <div class="f"><span>key</span><input id="key" type="password" placeholder="stored on this Mac only" autocomplete="off"></div>
-    <div class="f"><span>model</span><input id="model" placeholder="model id"></div>
+  <form class="ask" id="new">
+    <input id="goal" placeholder="What should the lab find out?" aria-label="Research goal" autocomplete="off">
+    <div class="chips">
+      <label class="chip">Agents <input id="agents" value="16" inputmode="numeric" aria-label="Agents"></label>
+      <label class="chip">Budget <input id="budget" value="10B" aria-label="Token budget"></label>
+      <label class="chip repo">Repo <input id="repo" placeholder="optional" aria-label="Git repo"></label>
+    </div>
+    <button class="go">Start</button>
+  </form>
+
+  <nav class="research" id="tabs" aria-label="Research"></nav>
+  <main class="grid" id="grid"></main>
+</div>
+
+<dialog id="settings"><div class="sheet">
+  <h2>Settings <button class="mini" type="button" id="closeSet">Done</button></h2>
+  <h3 class="group-title note">MODEL</h3>
+  <div class="group">
+    <div class="fr"><span>Source</span><div class="seg" role="group" aria-label="Model source"><button type="button" data-src="local" aria-pressed="true">This Mac</button><button type="button" data-src="api" aria-pressed="false">API key</button></div></div>
+    <div id="apiRows" hidden>
+      <div class="fr"><span>Endpoint</span><input id="url" placeholder="https://openrouter.ai/api/v1/chat/completions"></div>
+      <div class="fr"><span>Key</span><input id="key" type="password" placeholder="Stored on this Mac only" autocomplete="off"></div>
+      <div class="fr"><span>Model</span><input id="model" placeholder="Model ID"></div>
+    </div>
+    <div class="fr"><span id="srcMsg" class="note" style="width:auto"></span><button class="mini blue" type="button" id="saveSrc" style="margin-left:auto">Save</button></div>
   </div>
-  <div class="f"><span></span><button class="btn" type="button" id="saveSrc">save</button><span id="srcMsg" class="dim"></span></div>
-  <hr>
-  <div class="dim">local engine</div>
-  <div class="f"><span>base model</span><input id="smodel" placeholder="mlx-community/Qwen3.8-27B-8bit"><button class="btn" id="serve" type="button">start</button><button class="btn" id="halt" type="button">stop</button></div>
-  <div class="f"><span>pair macs</span><input id="hosts" placeholder="optional: studio1.local,studio2.local"><button class="btn" id="pair" type="button">pair</button></div>
-  <div class="f"><span>gpu</span><span id="gpuline" class="dim" style="white-space:pre-line"></span></div>
-  <hr>
-  <div class="dim">adapters the agents trained <span id="active"></span></div>
-  <div id="adapters"></div>
-  <hr>
-  <pre id="elog" class="dim"></pre>
-</dialog>
+  <h3 class="note">LOCAL ENGINE</h3>
+  <div class="group">
+    <div class="fr"><span>Base model</span><input id="smodel" placeholder="mlx-community/Qwen3.8-27B-8bit"></div>
+    <div class="fr"><span>Engine</span><span class="note" id="engState" style="width:auto"></span><span style="margin-left:auto;display:flex;gap:6px"><button class="mini blue" type="button" id="serve">Start</button><button class="mini" type="button" id="halt">Stop</button></span></div>
+    <div class="fr"><span>Pair Macs</span><input id="hosts" placeholder="studio1.local,studio2.local"><button class="mini" type="button" id="pair">Pair</button></div>
+    <pre class="elog" id="elog"></pre>
+  </div>
+  <h3 class="note">ADAPTERS THE AGENTS TRAINED</h3>
+  <div class="group" id="adapters"></div>
+</div></dialog>
 
 <script>
 const H = {"X-Horizon": "1", "Content-Type": "application/json"};
 const $ = id => document.getElementById(id);
 const get = p => fetch(p).then(r => r.json());
 const post = (p, b) => fetch(p, {method: "POST", headers: H, body: JSON.stringify(b || {})});
-const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
 const ansi = s => esc(s).replace(/\x1b\[(\d+)m/g, (_, n) => n === "0" ? "</span>" : `<span class="a${n}">`);
 const fmt = n => n >= 1e9 ? (n / 1e9).toFixed(1) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(Math.round(n));
 const parseN = s => { const m = String(s).trim().match(/^([\d.]+)\s*([kmb]?)$/i); return m ? m[1] * {"": 1, k: 1e3, m: 1e6, b: 1e9}[m[2].toLowerCase()] : NaN; };
-const pct = p => String(Math.round(p * 100)).padStart(3, " ") + "%";
-const bar = (p, w) => "█".repeat(Math.round(p * w)) + "░".repeat(w - Math.round(p * w));
+const pad = n => String(Math.floor(n)).padStart(2, "0");
+const dur = s => s >= 86400 ? [`${Math.floor(s / 86400)}`, "d", `${Math.floor(s % 86400 / 3600)}h ${pad(s % 3600 / 60)}m`]
+  : s >= 3600 ? [`${Math.floor(s / 3600)}`, "h", `${pad(s % 3600 / 60)}m ${pad(s % 60)}s`] : [`${Math.floor(s / 60)}`, "m", `${pad(s % 60)}s`];
+const ago = t => { const s = Date.now() / 1000 - t; return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
 const kind = s => s === "running" ? "running" : s === "done" ? "done" : s === "queued" ? "queued" : /kill|fail|error|crash/.test(s) ? "bad" : "";
-const word = x => x.status === "running" ? (x.id[0] === "s" ? `${x.running} agents` : "working")
-  : x.status === "done" ? "finished" : x.status.startsWith("killed") ? "killed by reviewer" : x.status;
+const words = x => x.status === "running" ? "Working" : x.status === "queued" ? "Starting" : x.status === "done" ? "Finished" : x.status.startsWith("killed") ? "Stopped by reviewer" : x.status[0].toUpperCase() + x.status.slice(1);
 
-let sel = null, agent = null, off = -1, last = {}, lastT = 0, tps = 0;
+function ring(p, size, w) {
+  const r = 50 - w / 2 - 1, c = 2 * Math.PI * r;
+  return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true"><circle class="tr" cx="50" cy="50" r="${r}" stroke-width="${w}"/>
+    <circle class="bar" cx="50" cy="50" r="${r}" stroke-width="${w}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.min(1, p))}"/></svg>`;
+}
+
+let sel = null, agent = null, off = -1, items = [], last = {}, lastT = 0, tps = 0, hist = [], clock = null, gpus = [];
 
 async function tick() {
   const [swarms, runs] = await Promise.all([get("/projects"), get("/runs")]);
-  const items = [...swarms, ...runs].sort((a, b) => (b.created || 0) - (a.created || 0)), now = Date.now() / 1000;
-  if (lastT) tps = items.reduce((a, x) => a + (last[x.id] != null ? Math.max(0, x.tokens - last[x.id]) : 0), 0) / (now - lastT);
+  items = [...swarms, ...runs].sort((a, b) => (b.created || 0) - (a.created || 0));
+  const now = Date.now() / 1000;
+  if (lastT) { tps = items.reduce((a, x) => a + (last[x.id] != null ? Math.max(0, x.tokens - last[x.id]) : 0), 0) / (now - lastT); hist = [...hist, tps].slice(-60); }
   last = Object.fromEntries(items.map(x => [x.id, x.tokens])); lastT = now;
-  $("list").innerHTML = items.map((x, i) => `<div class="row ${x.id === sel ? "sel" : ""}" data-id="${x.id}" tabindex="0" role="button">
-      <span class="dim">#${items.length - i}</span><span class="t">${esc(x.goal || x.hypothesis)}</span>
-      <span class="r"><span class="bar ${kind(x.status) === "done" ? "ok" : "acc"}">${bar(x.progress, 20)}</span> ${pct(x.progress)} <span class="dim">${esc(word(x))}</span></span></div>`).join("")
-    || `<div class="dim">no research yet. type a question above and press enter.</div>`;
+  if (!items.some(x => x.id === sel)) { sel = items[0]?.id ?? null; agent = null; off = -1; }
+  $("tabs").innerHTML = items.map(x => `<button class="tab" type="button" data-id="${x.id}" aria-pressed="${x.id === sel}">
+    ${ring(x.progress, 22, 16)}<span>${esc(x.goal || x.hypothesis)}</span><small>${Math.round(x.progress * 100)}%</small></button>`).join("");
   const x = items.find(x => x.id === sel);
-  if (x) await focus(x);
+  x ? await render(x) : welcome();
 }
 
-async function focus(x) {
-  const f = $("focus"), swarm = x.id[0] === "s";
-  if (f.dataset.id !== x.id) {
-    f.dataset.id = x.id; f.hidden = false; off = -1; agent = null;
-    f.innerHTML = `<hr><h1 id="ft"></h1><div id="fs"></div>
-      <hr><div class="dim">milestones</div><ul class="ms" id="fms"></ul>
-      ${swarm ? `<hr><div class="dim" id="ts"></div><table class="lb"><thead><tr><th>#</th><th>elo</th><th>w-l-d</th><th>score</th><th>agent</th><th>direction</th></tr></thead><tbody id="lb"></tbody></table>
-      <hr><div class="dim" id="gs"></div><div class="grid" id="grid" aria-label="agents"></div>` : ""}
-      <hr><div class="dim" id="lh">${swarm ? "pick an agent above to follow its work" : "work"}</div><pre id="log" tabindex="0"></pre>`;
-    const follow = id => { agent = id; off = -1; $("log").innerHTML = ""; tick(); };
+function welcome() {
+  $("grid").innerHTML = `<section class="w welcome"><h1>Ask the lab anything.</h1>
+    <p>Type a hypothesis above. Agents plan milestones, run experiments in their own VMs, curate a wiki, and keep going for as long as the budget lasts.</p></section>`;
+}
+
+async function render(x) {
+  const swarm = x.id[0] === "s";
+  const [kids, tour] = swarm ? await Promise.all([get(`/projects/${x.id}/runs`), get(`/projects/${x.id}/tournament`)]) : [[x], null];
+  const followed = swarm ? kids.find(k => k.id === agent) : x;
+  const think = followed?.thought ? {text: followed.thought, at: followed.thought_at, by: followed.id, part: followed.hypothesis}
+    : x.thought ? {text: x.thought, at: x.thought_at, by: x.thought_by, part: x.thought_part} : null;
+  const done = x.milestones.filter(m => m.done).length, cur = x.milestones.findIndex(m => !m.done);
+  clock = {base: x.runtime || 0, at: Date.now() / 1000, running: x.status === "running", since: x.created};
+
+  if ($("grid").dataset.id !== x.id) {
+    $("grid").dataset.id = x.id; off = -1;
+    $("grid").innerHTML = `
+      <section class="w" aria-label="How close"><div class="lab" style="color:var(--green)">How close</div>
+        <div class="ringbox"><div class="big" id="pct"></div><span id="bring"></span></div><div class="foot" id="msfoot"></div></section>
+      <section class="w" aria-label="Runtime"><div class="lab"><span style="color:var(--orange)" id="rstate"></span><span class="s" id="rsince"></span></div>
+        <div class="big" id="rbig"></div><div class="foot" id="rsmall"></div></section>
+      <section class="w m" aria-label="Train of thought"><div class="lab"><span style="color:var(--indigo)">Thinking</span><span class="s" id="tby"></span></div>
+        <div class="thought" id="thought"></div><div class="foot" id="tpart" style="margin-top:auto"></div></section>
+      <section class="w m tall" aria-label="Milestones"><div class="lab"><span style="color:var(--blue)">Milestones</span><span class="s" id="mscount"></span></div><ul class="ms" id="ms"></ul></section>
+      <section class="w" aria-label="Throughput"><div class="lab"><span style="color:var(--teal)">Throughput</span></div>
+        <div class="big" id="tps"></div><svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><path id="sfill" fill="var(--teal)" opacity=".15"/><polyline id="sline" fill="none" stroke="var(--teal)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg></section>
+      <section class="w" aria-label="Tokens"><div class="lab"><span style="color:var(--indigo)">Tokens</span><span class="s" id="ksub"></span></div>
+        <div class="big" id="kbig"></div><div class="mac"><span class="foot" id="kfoot" style="margin:0"></span><span></span><span class="cap"><i id="kcap" style="background:var(--indigo)"></i></span></div></section>
+      <section class="w" aria-label="${swarm ? "Best score" : "Steps"}"><div class="lab"><span style="color:var(--yellow)">${swarm ? "Best score" : "Steps"}</span></div>
+        <div class="big" id="bbig"></div><div class="foot" id="bfoot"></div></section>
+      <section class="w" aria-label="GPU"><div class="lab"><span style="color:var(--green)">GPU</span><span class="s" id="gsub"></span></div><div id="gpu" style="margin-top:auto"></div></section>
+      ${swarm ? `
+      <section class="w l" aria-label="Tournament"><div class="lab"><span style="color:var(--yellow)">Tournament</span><span class="s" id="tsub"></span></div>
+        <table class="lb"><tbody id="lb"></tbody></table></section>
+      <section class="w l" aria-label="Agents"><div class="lab"><span style="color:var(--green)">Agents</span><span class="s" id="asub"></span></div>
+        <div class="dots" id="dots"></div>
+        <div class="legend"><span><i style="background:var(--blue)"></i>working</span><span><i style="background:var(--ring)"></i>done</span><span><i style="background:var(--red)"></i>stopped</span><span><i style="background:var(--faint)"></i>starting</span></div></section>` : ""}
+      <section class="w xl" aria-label="Work"><div class="lab"><span>Work</span><span class="s" id="wsub"></span></div>
+        <div class="acts" id="acts"></div><pre class="log" id="log" tabindex="0"></pre></section>`;
     if (swarm) {
-      $("grid").onclick = e => { const b = e.target.closest("button"); if (b) follow(b.dataset.id); };
+      $("dots").onclick = e => { const b = e.target.closest("button"); if (b) follow(b.dataset.id); };
       $("lb").onclick = e => { const r = e.target.closest("tr"); if (r) follow(r.dataset.id); };
       $("lb").onkeydown = e => { const r = e.target.closest("tr"); if (r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); follow(r.dataset.id); } };
     }
+    $("acts").onclick = e => { const a = e.target.dataset.act; if (a) post(`/${swarm ? "projects" : "runs"}/${x.id}/${a}`); };
   }
-  const done = x.milestones.filter(m => m.done).length;
-  $("ft").textContent = x.goal || x.hypothesis;
-  $("fs").innerHTML = `<span class="acc bar">${bar(x.progress, 40)}</span> ${pct(x.progress)}  <span class="dim">${done}/${x.milestones.length || "?"} milestones · ${esc(word(x))} · ${fmt(x.tokens)}/${fmt(x.budget)} tok</span>  `
-    + (x.status === "running" ? `<button class="btn" type="button" data-act="stop">stop</button>`
-       : !x.status.startsWith("killed") && x.status !== "queued" ? `<button class="btn" type="button" data-act="continue">continue</button>` : "");
-  $("fs").onclick = e => { const a = e.target.dataset.act; if (a) post(`/${swarm ? "projects" : "runs"}/${x.id}/${a}`); };
-  const cur = x.milestones.findIndex(m => !m.done);
-  $("fms").innerHTML = x.milestones.map((m, i) => `<li class="${i === cur ? "now" : m.done ? "" : "dim"}"><span class="${m.done ? "ok" : i === cur ? "acc" : ""}">${m.done ? "[x]" : i === cur ? "[>]" : "[ ]"}</span><span>${esc(m.text)}</span></li>`).join("")
-    || `<li class="dim">the agents are drafting milestones…</li>`;
+
+  $("pct").innerHTML = `${Math.round(x.progress * 100)}<small>%</small>`;
+  $("bring").innerHTML = ring(x.progress, 76, 13);
+  $("msfoot").textContent = x.milestones.length ? `${done} of ${x.milestones.length} milestones` : "Drafting milestones";
+  $("mscount").textContent = x.milestones.length ? `${done} of ${x.milestones.length}` : "";
+  $("ms").innerHTML = x.milestones.map((m, i) => `<li class="${m.done ? "done" : i === cur ? "now" : ""}"><span class="c">${m.done ? "✓" : ""}</span><span>${esc(m.text)}</span></li>`).join("")
+    || `<li style="border:0"><span></span><span class="empty">The agents write milestones as their first job.</span></li>`;
+  $("thought").className = "thought" + (think ? "" : " none");
+  $("thought").textContent = think ? think.text : "No thoughts shared yet. Agents keep THOUGHT.md current as they work.";
+  $("tby").textContent = think ? `${swarm ? "agent …" + think.by.slice(-4) + " · " : ""}${ago(think.at)}` : "";
+  $("tpart").textContent = think && swarm ? think.part : "";
+  $("acts").innerHTML = x.status === "running" ? `<button class="mini" type="button" data-act="stop">Stop</button>`
+    : !x.status.startsWith("killed") && x.status !== "queued" ? `<button class="mini" type="button" data-act="continue">Continue</button>` : "";
+  $("wsub").textContent = swarm ? (followed ? `agent …${followed.id.slice(-4)} · ${followed.hypothesis}` : "pick an agent to follow its work") : `${fmt(x.tokens)} of ${fmt(x.budget)} tokens`;
   if (swarm) {
-    const [kids, tour] = await Promise.all([get(`/projects/${x.id}/runs`), get(`/projects/${x.id}/tournament`)]);
-    $("ts").textContent = tour.rows.length
-      ? `tournament  ${tour.rows.length} rated · ${tour.matches} matches (${tour.matches - tour.by_eval} judged, ${tour.by_eval} by eval score) · leaders get revived`
-      : `tournament  starts once agents have ${10} steps of work`;
-    $("lb").innerHTML = tour.rows.slice(0, 10).map((r, i) => `<tr class="${r.id === agent ? "sel" : ""}" data-id="${r.id}" tabindex="0">
-      <td class="${i === 0 ? "acc" : "dim"}">${i + 1}</td><td>${Math.round(r.elo)}</td><td class="dim">${r.w}-${r.l}-${r.d}</td>
-      <td>${r.score == null ? '<span class="dim">—</span>' : esc(+r.score.toFixed(3))}</td><td class="dim">…${esc(r.id.slice(-4))}</td>
-      <td class="${kind(r.status) === "bad" ? "bad" : ""}">${esc(r.hypothesis)}</td></tr>`).join("");
-    $("gs").textContent = `agents  ${x.running} running · ${x.finished} finished · ${x.done} succeeded`;
-    // shortcut: draws the newest 4000 agents as DOM cells, switch to <canvas> if swarms grow past that
-    $("grid").innerHTML = kids.slice(0, 4000).map(r => `<button type="button" class="${kind(r.status)} ${r.id === agent ? "sel" : ""}" data-id="${r.id}" title="${esc(r.hypothesis)} · ${esc(r.status)}" aria-label="agent ${r.id}, ${esc(r.status)}">■</button>`).join("");
-    const a = kids.find(r => r.id === agent);
-    if (a) $("lh").textContent = `agent ${a.id} · ${a.status} · ${a.steps} steps · ${a.hypothesis}`;
+    $("tsub").textContent = tour.rows.length ? `${tour.matches} matches` : "starts after 10 steps of work";
+    $("lb").innerHTML = tour.rows.slice(0, 9).map((r, i) => `<tr class="${r.id === agent ? "sel" : ""}" data-id="${r.id}" tabindex="0">
+      <td class="r">${i + 1}</td><td class="d">${esc(r.hypothesis)}</td><td class="k">${r.score == null ? "" : `<span class="sc">${esc(+r.score.toFixed(3))}</span>`}</td><td class="e">${Math.round(r.elo)}</td></tr>`).join("")
+      || `<tr><td class="empty">Agents are rated in head-to-head matches once they have results.</td></tr>`;
+    $("asub").textContent = `${x.running} working · ${fmt(x.total)} total`;
+    // shortcut: draws the newest 4000 agents as DOM dots, switch to <canvas> if swarms grow past that
+    $("dots").innerHTML = kids.slice(0, 4000).map(k => `<button type="button" class="${kind(k.status)} ${k.id === agent ? "sel" : ""}" data-id="${k.id}" title="${esc(k.hypothesis)} · ${esc(k.status)}" aria-label="Agent ${k.id.slice(-4)}, ${esc(k.status)}"></button>`).join("");
   }
+  const [kn, ku] = fmt(x.tokens).match(/^([\d.]+)(\D*)$/).slice(1);
+  $("kbig").innerHTML = `${kn}<small>${ku}</small>`;
+  $("kfoot").textContent = `of ${fmt(x.budget)} budget`;
+  $("kcap").style.width = `${Math.min(100, x.tokens / x.budget * 100)}%`;
+  if (swarm) {
+    const best = tour.rows.filter(r => r.score != null).sort((a, b) => b.score - a.score)[0];
+    $("bbig").textContent = best ? +best.score.toFixed(3) : "–";
+    $("bfoot").textContent = best ? best.hypothesis : "No eval scores yet";
+  } else {
+    $("bbig").textContent = x.steps;
+    $("bfoot").textContent = "Reviewed every 10 steps";
+  }
+  paintClock(); paintTps(); paintGpu();
   const id = swarm ? agent : x.id;
-  if (id) await pullLog(id);
+  if (id) await pullLog(id); else $("log").textContent = "";
+}
+
+function follow(id) { agent = id; off = -1; $("log").innerHTML = ""; tick(); }
+
+function paintClock() {
+  if (!clock || !$("rbig")) return;
+  const s = clock.base + (clock.running ? Date.now() / 1000 - clock.at : 0), [n, u, rest] = dur(s);
+  $("rstate").textContent = clock.running ? "Running" : "Ran";
+  $("rsince").textContent = clock.since ? new Date(clock.since * 1000).toLocaleDateString(undefined, {weekday: "short", month: "short", day: "numeric"}) : "";
+  $("rbig").innerHTML = `${n}<small>${u}</small>`;
+  $("rsmall").textContent = rest;
+}
+setInterval(paintClock, 1000);
+
+function paintTps() {
+  if (!$("tps")) return;
+  $("tps").innerHTML = `${tps >= 100 ? Math.round(tps) : tps.toFixed(1)}<small>tok/s</small>`;
+  const max = Math.max(1, ...hist), pts = hist.map((v, i) => `${(i * 100 / Math.max(1, hist.length - 1)).toFixed(1)},${(28 - v / max * 25).toFixed(1)}`);
+  $("sline").setAttribute("points", pts.join(" "));
+  $("sfill").setAttribute("d", pts.length > 1 ? `M0,30 L${pts.join(" L")} L100,30 Z` : "");
+}
+
+function paintGpu() {
+  if (!$("gpu")) return;
+  const ok = gpus.filter(g => !g.error);
+  $("gsub").textContent = ok.length > 1 ? `${ok.length} Macs` : ok[0]?.host || "";
+  $("gpu").innerHTML = !gpus.length ? `<div class="empty">Waiting for macmon…</div>` : !ok.length ? `<div class="empty">${esc(gpus[0].error)}</div>`
+    : ok.length === 1 ? `<div class="big" style="margin:0">${ok[0].mhz}<small>MHz</small></div><div class="mac"><span class="foot" style="margin:0">${Math.round(ok[0].active * 100)}% busy · ${Math.round(ok[0].watts)} W</span><span></span><span class="cap"><i style="width:${ok[0].active * 100}%"></i></span></div>`
+    : ok.map(g => `<div class="mac"><span>${esc(g.host)}</span><b>${g.mhz}<small style="font-size:11px;color:var(--sub)"> MHz</small></b><span class="cap" role="meter" aria-label="${esc(g.host)} GPU busy" aria-valuenow="${Math.round(g.active * 100)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${g.active * 100}%"></i></span></div>`).join("");
 }
 
 async function pullLog(id) {
@@ -192,52 +345,53 @@ async function pullLog(id) {
 
 async function engine() {
   const [s, g] = await Promise.all([get("/status"), get("/gpu")]);
-  const act = s.adapters.find(a => a.active);
-  const src = s.source === "local" ? `local ${(s.models[0] || s.base_model).split("/").pop()}${act ? " +" + act.name : ""}` : `api ${s.model}`;
-  const gpus = g.filter(m => !m.error).map(m => `${m.mhz}MHz ${Math.round(m.active * 100)}%`).join(" / ");
-  $("status").innerHTML = `<span class="${s.up || s.source !== "local" ? "ok" : "bad"}">●</span> ${esc(src)}`
-    + `${s.hosts ? ` │ ${s.hosts.hosts.length} macs` : ""}${gpus ? ` │ gpu ${esc(gpus)}` : ""} │ ${tps >= 10 ? Math.round(tps) : tps.toFixed(1)} tok/s`;
-  if (!$("set").open) return;
-  $("gpuline").textContent = g.map(m => m.error ? `${m.host}: ${m.error}` : `${m.host} ${m.mhz} MHz · ${Math.round(m.active * 100)}% busy · ${Math.round(m.watts)} W · mem ${Math.round(m.ram * 100)}%`).join("\n") || "—";
-  $("active").textContent = act ? `· agents run on ${act.name}` : "· agents run on the base model";
-  $("adapters").innerHTML = s.adapters.map(a => `<div class="f"><span>${esc(a.name)}</span><span class="dim">${esc(a.status)} · loss ${a.base_loss ?? "?"} → ${a.test_loss ?? "?"} · by ${esc(a.by)}</span>
-      ${a.active ? `<span class="ok">active</span> <button class="btn" type="button" data-adopt="none">roll back</button>` : a.status === "trained" ? `<button class="btn" type="button" data-adopt="${esc(a.name)}">adopt</button>` : ""}</div>`).join("")
-    || `<div class="dim">none yet. agents train adapters with the finetune tool.</div>`;
-  $("elog").textContent = (s.serve_log + s.setup_log).slice(-3000) || "no engine output yet.";
+  gpus = g; paintGpu();
+  const act = s.adapters.find(a => a.active), on = s.up || s.source !== "local";
+  $("led").className = "led" + (on ? " on" : "");
+  $("engine").innerHTML = s.source === "local"
+    ? `<b>${esc((s.models[0] || s.base_model).split("/").pop())}</b>${act ? ` + ${esc(act.name)}` : ""}${s.hosts ? ` · ${s.hosts.hosts.length} Macs` : ""}${s.up ? "" : " · off"}`
+    : `<b>${esc(s.model)}</b> · API`;
+  if (!$("settings").open) return;
+  $("engState").textContent = s.up ? "Running" : "Stopped";
+  $("adapters").innerHTML = s.adapters.map(a => `<div class="fr"><span>${esc(a.name)}</span><span class="note" style="width:auto">${esc(a.status)} · loss ${a.base_loss ?? "–"} → ${a.test_loss ?? "–"}</span>
+      <span style="margin-left:auto">${a.active ? `<button class="mini" type="button" data-adopt="none">Roll back</button>` : a.status === "trained" ? `<button class="mini blue" type="button" data-adopt="${esc(a.name)}">Adopt</button>` : ""}</span></div>`).join("")
+    || `<div class="fr"><span class="note" style="width:auto">None yet. Agents train adapters with the finetune tool.</span></div>`;
+  $("elog").textContent = (s.serve_log + s.setup_log).slice(-2500) || "No engine output yet.";
 }
 
+function setSrc(src) { document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.src === src)); $("apiRows").hidden = src !== "api"; }
 async function openSettings() {
   const s = await get("/status");
-  document.querySelector(`input[name=src][value=${s.source === "local" ? "local" : "api"}]`).checked = true;
-  $("apiFields").hidden = s.source === "local";
-  if (s.source !== "local") { $("url").value = s.source; $("model").value = s.model; $("key").placeholder = s.has_key ? "•••••••• saved (type to replace)" : "stored on this Mac only"; }
-  $("smodel").value = s.base_model;
-  $("set").showModal(); engine();
+  setSrc(s.source === "local" ? "local" : "api");
+  if (s.source !== "local") { $("url").value = s.source; $("model").value = s.model; }
+  $("key").placeholder = s.has_key ? "Saved · type to replace" : "Stored on this Mac only";
+  $("smodel").value = s.base_model; $("srcMsg").textContent = "";
+  $("settings").showModal(); engine();
 }
 
-$("list").onclick = e => { const r = e.target.closest(".row"); if (r) { sel = r.dataset.id; tick(); } };
-$("list").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { const r = e.target.closest(".row"); if (r) { e.preventDefault(); sel = r.dataset.id; tick(); } } };
+$("tabs").onclick = e => { const t = e.target.closest(".tab"); if (t) { sel = t.dataset.id; agent = null; tick(); } };
 $("new").onsubmit = async e => {
   e.preventDefault();
   const hypothesis = $("goal").value.trim(), budget = parseN($("budget").value);
   if (!hypothesis) return $("goal").focus();
   if (!budget) return $("budget").focus();
   const r = await post("/runs", {hypothesis, agents: +$("agents").value || 1, budget, repo: $("repo").value});
-  if (r.ok) { $("goal").value = ""; sel = (await r.json()).id; tick(); }
+  if (r.ok) { $("goal").value = ""; sel = (await r.json()).id; agent = null; tick(); }
 };
-$("setBtn").onclick = openSettings;
-$("closeSet").onclick = () => $("set").close();
-document.querySelectorAll("input[name=src]").forEach(r => r.onchange = () => $("apiFields").hidden = r.value === "local" && r.checked);
+$("gear").onclick = openSettings;
+$("closeSet").onclick = () => $("settings").close();
+document.querySelector(".seg").onclick = e => { if (e.target.dataset.src) setSrc(e.target.dataset.src); };
 $("saveSrc").onclick = async () => {
-  const api = document.querySelector("input[name=src]:checked").value === "api";
-  const body = api ? {url: $("url").value.trim(), model: $("model").value.trim(), ...($("key").value ? {key: $("key").value} : {})} : {url: "http://127.0.0.1:8080/v1/chat/completions", model: "default_model"};
+  const api = document.querySelector(".seg [aria-pressed=true]").dataset.src === "api";
+  const body = api ? {url: $("url").value.trim(), model: $("model").value.trim(), ...($("key").value ? {key: $("key").value} : {})}
+    : {url: "http://127.0.0.1:8080/v1/chat/completions", model: "default_model"};
   const r = await post("/config", body);
-  $("srcMsg").textContent = r.ok ? "saved · new requests use it" : "url must start with http:// or https://";
+  $("srcMsg").textContent = r.ok ? "Saved. New requests use it." : "The endpoint must start with http:// or https://";
   $("key").value = "";
 };
 $("serve").onclick = () => post("/serve", {model: $("smodel").value});
 $("halt").onclick = () => post("/serve/stop");
-$("pair").onclick = async () => { if (!(await post("/setup", {hosts: $("hosts").value})).ok) alert("enter at least two hostnames, separated by commas"); };
+$("pair").onclick = async () => { if (!(await post("/setup", {hosts: $("hosts").value})).ok) alert("Enter at least two hostnames, separated by commas."); };
 $("adapters").onclick = async e => { const n = e.target.dataset.adopt; if (n) { const r = await post(`/adapters/${n}/adopt`); if (!r.ok) alert(await r.text()); engine(); } };
 const loop = (f, ms) => { const go = () => f().catch(() => {}).finally(() => setTimeout(go, ms)); go(); };
 loop(tick, 2000); loop(engine, 3000);

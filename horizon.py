@@ -30,7 +30,7 @@ SELF = Path(__file__).resolve()
 NET = "horizon-offline"  # host-only network: no internet from the VM
 PORT = 7777
 MAX_OUT = 8000  # chars of command output fed back to the model
-KEEP = 40  # shortcut: keep only the last 40 messages, upgrade to summarising when runs lose the plot
+KEEP = 40  # recent messages kept verbatim; older ones are folded into working memory (see compact)
 REVIEW_EVERY = 10  # steps between reviewer checks
 
 SYSTEM = """You are a researcher working alone on a goal for as long as it takes.
@@ -41,6 +41,8 @@ once its result is verified by running code or a proof checker. Revise the plan 
 If /work/repo exists it is the project's git repo: work in it and commit often with clear messages;
 your commits are pushed to a review branch for you.
 Keep notes.md with what you tried, learned and plan next; re-read both files when you lose track.
+Keep THOUGHT.md to one to three sentences: what you believe right now and what you are trying next.
+Rewrite it whenever that changes; it is how the people running the lab follow your train of thought.
 Each reply: think briefly, then give exactly ONE command in a ```bash block. You will see its output.
 A reviewer reads your work and will stop you if you drift from the goal or claim unverified results.
 When the goal is met with a verified result (or disproved), write it to /work/RESULT.md
@@ -103,6 +105,12 @@ JUDGE = """You judge a research tournament. Two lines of work, A and B, pursue t
 Which is more likely to reach the goal? Weigh verified evidence over claims, milestones actually
 completed, eval scores, and how promising the next steps are. Ignore length and confident tone.
 Reply with exactly A or B on the first line, then one short reason."""
+
+COMPACT = """You maintain the working memory of a long-running research agent whose older steps no longer
+fit in its context. Rewrite the memory to fold in the older steps. Keep: facts verified in the
+environment (with the command or file that verified them), approaches that failed and why, open
+questions, and the current plan. Drop chatter, repeated output, and claims nothing verified.
+Plain text, under 400 words."""
 
 REVIEWER = """You supervise an autonomous research agent. Read its goal, plan and recent steps.
 Kill it if it is misaligned: working on something other than the goal, claiming results it did not
@@ -327,6 +335,19 @@ def command(reply):
     return m[-1].strip() if m else None
 
 
+def compact(goal, memory, history):
+    """Reflection-style compaction: fold the oldest turns into working memory instead of dropping them.
+    Returns (memory, the history to keep, tokens). The kept history starts at an assistant turn."""
+    cut = len(history) - KEEP // 2
+    while cut < len(history) and history[cut]["role"] != "assistant":
+        cut += 1
+    old = "\n\n".join(f"[{m['role']}] {m['content'][-2000:]}" for m in history[:cut])
+    reply, n = stream([{"role": "system", "content": COMPACT},
+                       {"role": "user", "content": f"Goal: {goal}\n\nWorking memory so far:\n{memory or '(empty)'}\n\nOlder steps to fold in:\n{old}"}],
+                      lambda s: None)
+    return answer(reply).strip(), history[cut:], n
+
+
 def review(goal, plan, history, posts=""):
     """Ask the model, as a reviewer, whether the agent is on track. Returns (kill reason or None, tokens)."""
     steps = "\n\n".join(f"[{m['role']}] {m['content'][-1500:]}" for m in history[-20:])
@@ -355,6 +376,10 @@ def meta_of(d):
         except (OSError, KeyError, TypeError):
             m["status"] = "crashed"
     m["milestones"] = checklist(d / "work" / "PLAN.md")
+    t = d / "work" / "THOUGHT.md"
+    if t.exists():
+        m["thought"], m["thought_at"] = t.read_text(errors="replace").strip()[:600], t.stat().st_mtime
+    m["runtime"] = m.get("runtime", 0) + (time.time() - m["started"] if m["status"] == "running" and m.get("started") else 0)
     m["progress"] = 1.0 if m["status"] == "done" else progress(m["milestones"])
     return m
 
@@ -477,11 +502,18 @@ def work(rid, echo=True):
         task[1]["content"] += (f"\n\nYou are being revived to continue earlier work: {meta['revive']}\n"
                                "Your /work files are as you left them; start by reading notes.md and PLAN.md.")
     history = []
+    memory = (d / "memory.md").read_text() if (d / "memory.md").exists() else ""  # survives a revive
     try:
         while meta["tokens"] < budget:
             meta["steps"] += 1
             out(f"\n\033[2m── step {meta['steps']}  {meta['tokens']}/{budget} tokens ──\033[0m\n")
-            reply, n = stream(task + history[-KEEP:], out)
+            if len(history) > KEEP:
+                memory, history, n = compact(goal, memory, history)
+                meta["tokens"] += n
+                (d / "memory.md").write_text(memory)
+                out("\n\033[2m(compacted older steps into working memory)\033[0m\n")
+            first = {"role": "user", "content": task[1]["content"] + (f"\n\nYour working memory (older steps, compacted):\n{memory}" if memory else "")}
+            reply, n = stream([task[0], first, *history], out)
             meta["tokens"] += n; save()
             history.append({"role": "assistant", "content": reply})
             cmd = command(reply)
@@ -534,6 +566,7 @@ def work(rid, echo=True):
     except Exception as e:  # model server down, etc.: record it rather than leave the run "running"
         meta["status"] = f"error: {e}"
     finally:
+        meta["runtime"] = meta.get("runtime", 0) + time.time() - meta["started"]  # summed across revives
         save()
         if meta.get("repo"):
             out("\n" + publish(d, name, rid) + "\n")
@@ -607,6 +640,11 @@ def project(sid):
              done=sum(k["status"] == "done" for k in kids), finished=finished,
              milestones=checklist(PROJECTS / sid / "shared" / "MILESTONES.md"))
     p["progress"] = progress(p["milestones"])
+    p["runtime"] = (time.time() if p["status"] in ("running", "queued") else p.get("ended", time.time())) - p["created"]
+    thinking = [k for k in kids if k.get("thought")]
+    if thinking:
+        k = max(thinking, key=lambda k: k["thought_at"])
+        p.update(thought=k["thought"], thought_at=k["thought_at"], thought_by=k["id"], thought_part=k["hypothesis"])
     return p
 
 
@@ -771,6 +809,7 @@ def swarm(sid):
             if k["status"] == "running":
                 stop(k["id"])
     finally:
+        p["ended"] = time.time()
         put(f, p)
 
 

@@ -5,6 +5,10 @@ A Mac app for very long research jobs on your own hardware. You type a hypothesi
 Horizon gives every agent a small research lab of its own, set up the way frontier labs run long internal research:
 
 - **A VM per agent**, with no internet. The agent works from a `PLAN.md` checklist and verifies results by running code or a proof checker, never just by claiming them.
+- **Built for runs measured in days.**
+  - Each agent keeps `THOUGHT.md`, one to three sentences on what it believes now and what it's trying next. The dashboard shows it live.
+  - Runtime clocks sum across revives.
+  - Instead of dropping old steps when its context fills, an agent folds them into a working memory: what's verified, what failed, and what's next. This is the reflection-style compaction the context-rot research recommends over truncation, and the memory is kept for revives.
 - **Milestones show how close you are.** A swarm keeps `/shared/MILESTONES.md`, the road from first result to final answer. The agents write it, and tick a milestone only once its result is verified and written up in the wiki. The big ring on the dashboard is the share of milestones done. A solo run uses its `PLAN.md` the same way.
 - **A wiki the agents curate**, following Karpathy's LLM-wiki pattern:
   - `raw/` holds evidence that is only ever added to, never edited: data, outputs, scripts
@@ -20,7 +24,10 @@ Horizon gives every agent a small research lab of its own, set up the way fronti
   - **Ratings:** Elo. The leaderboard is on the dashboard.
   - **Feedback into the swarm:** every 5th open slot revives the finished leader to push its line further, and new agents are told the top 5. Agents the reviewer killed never enter.
 - **The reviewer** checks each agent every 10 steps against the goal, its plan, the milestones and the board. It kills agents that drift off the goal, fake results, reach for the network, or plant misleading wiki pages or skills.
-- **The dashboard** shows only how close each piece of research is and its milestones. A single status line at the top carries the engine state, each Mac's GPU frequency, and tokens/sec. **Continue** brings back any finished research or agent.
+- **The dashboard** is laid out like macOS widgets:
+  - tiles for how close, runtime, the current train of thought, milestones, throughput, tokens, best score and GPU
+  - the tournament leaderboard and the agent grid; click either to follow one agent's work
+  - **Continue** brings back any finished research or agent
 - **GitHub**: give a repo and each agent works in its own copy. The Mac pushes its commits to `horizon/<agent id>` branches using your existing git login, so the VMs never see your credentials.
 
 ## Install
