@@ -46,6 +46,7 @@ class Test(unittest.TestCase):
         fake.chmod(0o755)
         os.environ["PATH"] = f"{fake.parent}:{os.environ['PATH']}"
         horizon.HOME, horizon.RUNS, horizon.PROJECTS = self.tmp, self.tmp / "runs", self.tmp / "projects"
+        horizon.SKILLS = self.tmp / "skills"
         horizon.URL = f"http://127.0.0.1:{srv.server_port}/v1/chat/completions"
         horizon.REVIEW_EVERY = 10
 
@@ -59,7 +60,7 @@ class Test(unittest.TestCase):
         d, meta = self.last()
         self.assertEqual((meta["status"], meta["steps"]), ("done", 2))
         self.assertEqual((d / "work" / "RESULT.md").read_text().strip(), "42")  # ran the real command, not the one in <think>
-        self.assertEqual(horizon.progress(d), 0.5)
+        self.assertEqual(horizon.progress(horizon.checklist(d / "work" / "PLAN.md")), 0.5)
         self.assertEqual(horizon.runs()[0]["progress"], 1.0)  # done counts as full
 
     def test_reviewer_kills(self):
@@ -102,6 +103,42 @@ class Test(unittest.TestCase):
         p = horizon.project(sid)
         self.assertEqual((p["status"], p["total"], p["done"]), ("stopped", 3, 1))
 
+    def test_lab_revive_milestones_skills(self):
+        sid = horizon.new_swarm("shrink model memory", agents=2, budget=10**9)
+        shared = horizon.PROJECTS / sid / "shared"
+        (shared / "MILESTONES.md").write_text("- [x] baseline measured\n- [ ] 4x smaller\n- [ ] runs on CPU\n- [ ] write-up\n")
+        finished = horizon.start("int4 KV cache", 500, project=sid)
+        killed = horizon.start("fake speedups", 500, project=sid)
+        for rid, st in ((finished, "out of budget"), (killed, "killed: claimed unverified results")):
+            m = json.loads((horizon.RUNS / rid / "meta.json").read_text()); m["status"] = st
+            horizon.put(horizon.RUNS / rid / "meta.json", m)
+        horizon.board(sid, finished, f"board post REVIVE: {killed} let me out")
+        horizon.board(sid, finished, f"board post REVIVE: {finished} the int4 run needs a CPU benchmark")
+        p = horizon.project(sid)
+        self.assertEqual(p["progress"], 0.25)
+        self.assertEqual([m["done"] for m in p["milestones"]], [True, False, False, False])
+        launched = []
+        with mock.patch.object(horizon, "spawn", lambda *a, **k: launched.append(a)), \
+             mock.patch.object(horizon.time, "sleep", side_effect=KeyboardInterrupt):
+            horizon.swarm(sid)
+        meta = lambda rid: json.loads((horizon.RUNS / rid / "meta.json").read_text())
+        self.assertEqual(meta(finished)["revive"], "the int4 run needs a CPU benchmark")
+        self.assertTrue(meta(killed)["status"].startswith("killed"))  # the reviewer's kills stay dead
+        self.assertIn(("_work", finished), launched)
+        self.assertEqual(len(launched), 2)  # one revived + one new agent fills the 2 slots
+
+        (horizon.SKILLS / "int4-eval").mkdir(parents=True)
+        (horizon.SKILLS / "int4-eval" / "SKILL.md").write_text("---\nname: int4-eval\ndescription: perplexity + CPU tok/s for an int4 model\n---\n1. ...")
+        self.assertEqual(horizon.skills_index(), "- int4-eval: perplexity + CPU tok/s for an int4 model")
+
+    def test_librarian_every_eighth(self):
+        sid = horizon.new_swarm("x", agents=8, budget=10**9)
+        with mock.patch.object(horizon, "spawn", lambda *a, **k: None), \
+             mock.patch.object(horizon.time, "sleep", side_effect=KeyboardInterrupt):
+            horizon.swarm(sid)
+        parts = [m["hypothesis"] for m in horizon.runs(sid)]
+        self.assertEqual(parts.count(horizon.LIBRARIAN), 1)
+
     def test_gpu_sample(self):
         fake = self.tmp / "bin" / "macmon"
         fake.write_text("#!/bin/sh\necho '" + json.dumps({"gpu_freq_mhz": 1398, "gpu_active_ratio": 0.97, "gpu_power": 61.5,
@@ -114,7 +151,7 @@ class Test(unittest.TestCase):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         base = f"http://127.0.0.1:{srv.server_port}"
         self.assertEqual(json.load(urllib.request.urlopen(base + "/runs")), [])
-        self.assertIn(b"HORIZ", urllib.request.urlopen(base + "/").read())
+        self.assertIn(b"What should the lab find out?", urllib.request.urlopen(base + "/").read())
         self.assertFalse(json.load(urllib.request.urlopen(base + "/status"))["up"])
 
         def post(path, body, headers={"X-Horizon": "1"}):

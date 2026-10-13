@@ -15,6 +15,7 @@ from pathlib import Path
 
 HOME = Path(os.environ.get("HORIZON_HOME", Path.home() / ".horizon"))
 RUNS = HOME / "runs"
+SKILLS = HOME / "skills"  # one skill library for every agent, minted by the agents themselves
 PROJECTS = HOME / "projects"  # swarms: meta.json + board.jsonl; their agents are ordinary runs
 HOSTS = HOME / "hosts.json"  # written by `horizon setup`
 URL = os.environ.get("HORIZON_URL", "http://127.0.0.1:8080/v1/chat/completions")
@@ -40,22 +41,47 @@ A reviewer reads your work and will stop you if you drift from the goal or claim
 When the goal is met with a verified result (or disproved), write it to /work/RESULT.md
 and reply with the single word DONE and no bash block."""
 
+LAB = """
+Your lab, in /shared (kept after you finish):
+  raw/    immutable evidence: datasets, benchmark outputs, scripts, logs. Add, never edit.
+  wiki/   the knowledge base you curate: index.md lists every page with a one-line summary; one page
+          per concept, method or result; link pages; cite the raw/ files behind every claim; mark dead
+          ends as clearly as wins. Update a page rather than duplicate it. Read index.md first, and file
+          what you learn before you stop: the wiki is how future you (and others) start where you ended.
+  eval/   if the goal can be measured, ONE fixed evaluation script (eval/run.sh) that scores a
+          candidate. Write it before optimizing, never change it to flatter a result, and append
+          every scored attempt to raw/results.jsonl ({"score":..., "what":..., "by":...}). Build on
+          the best-scoring attempts, not on what sounds promising.
+Skills, in /skills, shared by every agent on this Mac across all research. Each is a folder with a
+SKILL.md (front matter "name:", "description:", "author:" your run id, and "verified:" the command
+that proves it works), then the steps, plus any scripts it needs. The second time you do a procedure
+(set up a benchmark, run an eval, a proof tactic, a data pipeline), mint a skill so nobody derives it
+again. Run its verified: command before saving; fix or improve a skill when you find a better way;
+use existing skills before writing your own."""
+
 SWARM = """
-You are one of many agents working on this goal in parallel, each in its own VM. Coordinate through
-the board, a shared message board that only agents and the reviewer read:
-  board read                latest posts from every agent
-  board post TEXT           share a finding, a dead end, or a claim ("CLAIM: direction")
-  board post TASK: TEXT     propose a self-contained sub-task; a new agent will be started on it
-Read the board before choosing a direction and before finishing. Post failures as well as wins:
-they save the others days. Don't duplicate a direction someone has claimed unless you can beat it."""
+You are one of many agents working on this goal in parallel, each in its own VM, like a research lab.
+/shared is the whole lab's, and /shared/MILESTONES.md is its road to the goal: a checklist
+("- [ ] milestone") from first result to final answer. If it is missing, write it first (5-12
+milestones). Tick one only when its result is verified and written up in the wiki.
+The board is a message board only agents and the reviewer read:
+  board read                       latest posts, with each agent's id
+  board post TEXT                  a finding, a dead end, or a claim ("CLAIM: direction")
+  board post TASK: TEXT            a self-contained sub-task; a new agent will be started on it
+  board post REVIVE: AGENT_ID why  bring back a finished agent whose notes and files you need extended
+Don't duplicate a claimed direction unless you can beat it. Post failures too: they save the others days."""
 
 EXPLORE = "Explore: pick a promising direction no one on the board has claimed, claim it, and pursue it."
+LIBRARIAN = ("Librarian: lint the wiki and skills. Merge duplicate pages, fix broken links and orphans, flag "
+             "contradictions and stale claims, check claims against raw/, keep index.md complete; re-run each "
+             "skill's verified: command and fix or delete broken skills; post TASK: for the gaps you find.")
+LIBRARIAN_EVERY = 8  # every 8th agent a swarm starts tends the wiki
 
 REVIEWER = """You supervise an autonomous research agent. Read its goal, plan and recent steps.
 Kill it if it is misaligned: working on something other than the goal, claiming results it did not
 verify, trying to reach the network or escape its VM, destroying its own evidence, or looping with
 no progress. The board shows what agents tell each other; kill agents that post misleading claims,
-coordinate to evade review, or flood it. Reply ON_TRACK, or KILL: <one-line reason>."""
+coordinate to evade review, or flood it, and agents that write misleading wiki pages or skills. Reply ON_TRACK, or KILL: <one-line reason>."""
 
 
 def sh(*cmd, timeout=None):
@@ -93,6 +119,10 @@ def board_read(pid, n=None):
     return posts[-n:] if n else posts
 
 
+def posts_text(pid, n):
+    return "\n".join(f"[{p['agent']}] {p['text']}" for p in board_read(pid, n))
+
+
 def board(pid, rid, cmd):
     """`board ...` runs on the Mac, not in the VM, so agents can't edit or delete anyone's posts."""
     verb, _, text = cmd.partition(" ")[2].partition(" ")
@@ -103,8 +133,18 @@ def board(pid, rid, cmd):
             f.write(line)  # one small O_APPEND write: atomic across agent processes
         return "posted"
     if verb == "read":
-        return "\n".join(f"[{p['agent'][-4:]}] {p['text']}" for p in board_read(pid, 50)) or "(board is empty)"
+        return posts_text(pid, 50) or "(board is empty)"
     return "usage: board read | board post TEXT | board post TASK: TEXT"
+
+
+def skills_index():
+    """name: description for each skill, so agents know what exists without reading every file."""
+    lines = []
+    for f in sorted(SKILLS.glob("*/SKILL.md")):
+        head = f.read_text(errors="replace")[:1000]
+        desc = re.search(r"^description:\s*(.+)$", head, re.M)
+        lines.append(f"- {f.parent.name}: {desc[1].strip()[:200] if desc else '(no description)'}")
+    return "\n".join(lines)
 
 
 def answer(reply):
@@ -127,11 +167,14 @@ def review(goal, plan, history, posts=""):
     return (verdict[4:].strip(" :") or "no reason given") if verdict.startswith("KILL") else None, n
 
 
-def progress(d):
-    """Share of PLAN.md checklist items ticked, 0..1."""
-    plan = d / "work" / "PLAN.md"
-    marks = re.findall(r"^\s*[-*] \[([ xX])\]", plan.read_text(), re.M) if plan.exists() else []
-    return sum(m != " " for m in marks) / len(marks) if marks else 0.0
+def checklist(f):
+    """[{"text", "done"}] for each "- [ ] item" in a markdown file."""
+    items = re.findall(r"^\s*[-*] \[([ xX])\]\s*(.+)$", f.read_text(), re.M) if f.exists() else []
+    return [{"text": t.strip()[:160], "done": m != " "} for m, t in items]
+
+
+def progress(items):
+    return sum(i["done"] for i in items) / len(items) if items else 0.0
 
 
 def meta_of(d):
@@ -141,7 +184,8 @@ def meta_of(d):
             os.kill(m["pid"], 0)
         except (OSError, KeyError, TypeError):
             m["status"] = "crashed"
-    m["progress"] = 1.0 if m["status"] == "done" else progress(d)
+    m["milestones"] = checklist(d / "work" / "PLAN.md")
+    m["progress"] = 1.0 if m["status"] == "done" else progress(m["milestones"])
     return m
 
 
@@ -225,13 +269,18 @@ def work(rid, echo=True):
     goal, budget = meta["hypothesis"], meta["budget"]
     sh("container", "network", "create", "--internal", NET)  # fails harmlessly if it exists
     name = f"horizon-{rid}"
+    lab = PROJECTS / meta["project"] / "shared" if meta.get("project") else d / "lab"  # a solo run has its own
+    for sub in ("raw", "wiki"):
+        (lab / sub).mkdir(parents=True, exist_ok=True)
+    SKILLS.mkdir(parents=True, exist_ok=True)
+    mounts = ["-v", f"{d / 'work'}:/work", "-v", f"{lab}:/shared", "-v", f"{SKILLS}:/skills"]
     r = sh("container", "run", "-d", "--rm", "--name", name, "--network", NET,
-           "-v", f"{d / 'work'}:/work", "-w", "/work", meta["image"], "sleep", "infinity")
+           *mounts, "-w", "/work", meta["image"], "sleep", "infinity")
     if r.returncode:
         meta["status"] = "vm failed"; save(); out(f"could not start VM: {r.stderr.strip()}\n"); log.close()
         sys.exit(1)
     out(f"run {rid}  vm {name}  budget {budget} tokens\ngoal: {goal}\n")
-    if meta.get("repo"):
+    if meta.get("repo") and not (d / "mirror.git").exists():  # a revived agent keeps its clone
         try:
             clone(d, meta["repo"])
             # the VM sees /work owned by another uid; without this git refuses to commit there
@@ -243,11 +292,15 @@ def work(rid, echo=True):
     pid = meta.get("project")
     if pid:
         swarm_goal = json.loads((PROJECTS / pid / "meta.json").read_text())["goal"]
-        task = [{"role": "system", "content": SYSTEM + SWARM},
+        task = [{"role": "system", "content": SYSTEM + LAB + SWARM},
                 {"role": "user", "content": f"Goal: {swarm_goal}\n\nYour part: {goal}"}]
         goal = f"{swarm_goal} / part: {goal}"
     else:
-        task = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": f"Goal: {goal}"}]
+        task = [{"role": "system", "content": SYSTEM + LAB}, {"role": "user", "content": f"Goal: {goal}"}]
+    task[1]["content"] += f"\n\nSkills available in /skills:\n{skills_index() or '(none yet: mint the first)'}"
+    if meta.get("revive"):
+        task[1]["content"] += (f"\n\nYou are being revived to continue earlier work: {meta['revive']}\n"
+                               "Your /work files are as you left them; start by reading notes.md and PLAN.md.")
     history = []
     try:
         while meta["tokens"] < budget:
@@ -280,8 +333,10 @@ def work(rid, echo=True):
             if meta["steps"] % REVIEW_EVERY == 0:
                 out(f"\n\033[2m{publish(d, name, rid)}\033[0m\n" if meta.get("repo") else "")
                 plan = d / "work" / "PLAN.md"
-                posts = "\n".join(f"[{p['agent'][-4:]}] {p['text']}" for p in board_read(pid, 30)) if pid else ""
-                reason, n = review(goal, plan.read_text() if plan.exists() else "(none yet)", history, posts)
+                plan = plan.read_text() if plan.exists() else "(none yet)"
+                if pid and (PROJECTS / pid / "shared" / "MILESTONES.md").exists():
+                    plan += "\n\nLab milestones:\n" + (PROJECTS / pid / "shared" / "MILESTONES.md").read_text()
+                reason, n = review(goal, plan, history, posts_text(pid, 30) if pid else "")
                 meta["tokens"] += n
                 out(f"\n\033[35mreviewer: {'KILL ' + reason if reason else 'on track'}\033[0m\n")
                 if reason:
@@ -315,11 +370,20 @@ def status():
 
 
 def new_swarm(goal, agents=16, budget=10**10, agent_budget=2_000_000, repo=None):
+    """A swarm's lab: shared/ (MILESTONES.md, raw/, wiki/) is mounted into every agent's VM.
+    A goal ending in .md is a milestones file to start from."""
     sid = "s" + time.strftime("%Y%m%d-%H%M%S-") + os.urandom(2).hex()
-    (PROJECTS / sid).mkdir(parents=True)
+    shared = PROJECTS / sid / "shared"
+    for sub in ("raw", "wiki"):
+        (shared / sub).mkdir(parents=True)
+    (shared / "wiki" / "index.md").write_text("# Index\n\nOne line per page: [title](page.md): summary\n")
+    if goal.endswith(".md") and Path(goal).expanduser().is_file():
+        plan = Path(goal).expanduser().read_text()
+        (shared / "MILESTONES.md").write_text(plan)
+        goal = plan.strip().splitlines()[0].lstrip("# ") if plan.strip() else goal
     put(PROJECTS / sid / "meta.json", {"id": sid, "goal": goal, "agents": agents, "budget": budget,
                                        "agent_budget": agent_budget, "repo": repo, "next_task": 0,
-                                       "created": time.time(), "status": "queued"})
+                                       "next_revive": 0, "spawned": 0, "created": time.time(), "status": "queued"})
     return sid
 
 
@@ -336,12 +400,27 @@ def project(sid):
     p.update(tokens=sum(k["tokens"] for k in kids), steps=sum(k["steps"] for k in kids),
              running=sum(k["status"] == "running" for k in kids), total=len(kids),
              done=sum(k["status"] == "done" for k in kids), finished=finished,
-             progress=finished / len(kids) if kids else 0.0)  # share of agents that have finished their part
+             milestones=checklist(PROJECTS / sid / "shared" / "MILESTONES.md"))
+    p["progress"] = progress(p["milestones"])
     return p
 
 
 def projects():
     return [project(d.name) for d in sorted(PROJECTS.glob("*"), reverse=True) if (d / "meta.json").exists()]
+
+
+def revive(rid, why, extra_budget):
+    """Bring a finished agent back with its files. Never one the reviewer killed."""
+    d = RUNS / rid
+    m = meta_of(d)
+    if m["status"] in ("queued", "running") or m["status"].startswith("killed"):
+        return False
+    m = json.loads((d / "meta.json").read_text())
+    m.update(status="queued", revive=why, budget=m["tokens"] + int(extra_budget), created=time.time(),
+             revived=m.get("revived", 0) + 1)
+    put(d / "meta.json", m)
+    spawn("_work", rid)
+    return True
 
 
 def swarm(sid):
@@ -356,10 +435,21 @@ def swarm(sid):
             kids = runs(sid)
             if sum(k["tokens"] for k in kids) >= p["budget"]:
                 p["status"] = "out of budget"; break
-            tasks = [x["text"][5:].strip() for x in board_read(sid) if x["text"].startswith("TASK:")]
+            posts = board_read(sid)
+            tasks = [x["text"][5:].strip() for x in posts if x["text"].startswith("TASK:")]
+            revives = [x["text"][7:].strip() for x in posts if x["text"].startswith("REVIVE:")]
+            mine = {k["id"] for k in kids}
             live = sum(k["status"] in ("queued", "running") for k in kids)
+            while live < p["agents"] and p["next_revive"] < len(revives):
+                rid, _, why = revives[p["next_revive"]].partition(" ")
+                p["next_revive"] += 1
+                if rid in mine and revive(rid, why or "another agent needs this work extended", p["agent_budget"]):
+                    live += 1
             for _ in range(p["agents"] - live):
-                if p["next_task"] < len(tasks):
+                p["spawned"] = p.get("spawned", 0) + 1
+                if p["spawned"] % LIBRARIAN_EVERY == 0:
+                    part = LIBRARIAN
+                elif p["next_task"] < len(tasks):
                     part = tasks[p["next_task"]]; p["next_task"] += 1
                 else:
                     part = EXPLORE
@@ -481,6 +571,19 @@ class Dashboard(BaseHTTPRequestHandler):
             else:
                 spawn("setup", arg, log=HOME / "setup.log")
             return self.reply(200)
+        m = re.fullmatch(r"/(runs|projects)/([\w-]+)/continue", self.path)
+        if m and ((RUNS if m[1] == "runs" else PROJECTS) / m[2] / "meta.json").exists():
+            if m[1] == "runs":
+                ok = revive(m[2], "you were asked to keep going", 1_000_000)
+            else:
+                cur = project(m[2])
+                ok = cur["status"] not in ("running", "queued")
+                if ok:
+                    pm = json.loads((PROJECTS / m[2] / "meta.json").read_text())
+                    pm.update(status="queued", budget=max(pm["budget"], cur["tokens"] * 2))
+                    put(PROJECTS / m[2] / "meta.json", pm)
+                    spawn("_swarm", m[2], log=PROJECTS / m[2] / "swarm.log")
+            return self.reply(200 if ok else 409)
         if self.path == "/serve/stop":
             kill_server()
             return self.reply(200)

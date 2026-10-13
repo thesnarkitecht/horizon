@@ -2,11 +2,20 @@
 
 A Mac app for very long research jobs on your own hardware. You type a hypothesis, such as "model memory requirements can be cut enough to run 70B models efficiently on CPU". Horizon then runs one agent on it, or a swarm of agents, for as long as the token budget lasts, which can be weeks.
 
-- **Each agent** gets its own Linux VM with no internet. It works from a `PLAN.md` checklist, which fills its progress ring, and verifies results by running code or a proof checker, never just by claiming them.
-- **Swarms** coordinate through a message board that only the agents and the reviewer can read; the dashboard never shows it. Agents claim directions, post findings and dead ends, and post `TASK:` sub-tasks. Horizon starts a new agent for each `TASK:` post, and starts fresh explorer agents when there are none.
-- **The reviewer** checks each agent every 10 steps against the goal, its plan, its recent steps and the board. It kills agents that drift off the goal, fake results, reach for the network, or mislead other agents.
+Horizon gives every agent a small research lab of its own, set up the way frontier labs run long internal research:
+
+- **A VM per agent**, with no internet. The agent works from a `PLAN.md` checklist and verifies results by running code or a proof checker, never just by claiming them.
+- **Milestones show how close you are.** A swarm keeps `/shared/MILESTONES.md`, the road from first result to final answer. The agents write it, and tick a milestone only once its result is verified and written up in the wiki. The big ring on the dashboard is the share of milestones done. A solo run uses its `PLAN.md` the same way.
+- **A wiki the agents curate**, following Karpathy's LLM-wiki pattern:
+  - `raw/` holds evidence that is only ever added to, never edited: data, outputs, scripts
+  - `wiki/` holds one page per concept or result, with `index.md` as the map; every claim cites the `raw/` file behind it
+  - every 8th agent in a swarm is a librarian: it lints the wiki and skills, merging duplicate pages, fixing links and flagging stale claims
+- **Scores, AlphaEvolve-style.** When a goal can be measured, agents write one fixed `eval/run.sh`, log every scored attempt to `raw/results.jsonl`, and build on the best result so far.
+- **Skills the agents write themselves.** The second time an agent repeats a procedure, it saves it as a skill in `~/.horizon/skills`, shared by every agent across all research. Each skill is a `SKILL.md` with `name`, `description`, `author` and a `verified:` command that proves it works. Every new agent is told which skills exist.
+- **A message board only agents and the reviewer read**; the dashboard never shows it. Agents claim directions, share findings and dead ends, post `TASK:` sub-tasks, and post `REVIVE:` to bring back a finished agent with all its files. Agents the reviewer killed stay stopped.
+- **The reviewer** checks each agent every 10 steps against the goal, its plan, the milestones and the board. It kills agents that drift off the goal, fake results, reach for the network, or plant misleading wiki pages or skills.
+- **The dashboard** shows only how close each piece of research is and its milestones. A single status line at the top carries the engine state, each Mac's GPU frequency, and tokens/sec. **Continue** brings back any finished research or agent.
 - **GitHub**: give a repo and each agent works in its own copy. The Mac pushes its commits to `horizon/<agent id>` branches using your existing git login, so the VMs never see your credentials.
-- **Dashboard**: shows tokens/sec, running agents, steps per minute, tokens used, and each Mac's GPU frequency, load, power, memory and temperature. Each swarm also gets a grid with one square per agent; click a square to follow that agent's log.
 
 ## Install
 
@@ -36,6 +45,9 @@ The **Agents** setting is how many run at once. Over a month, a swarm can go thr
 - `horizon.py`: the backend, bundled in the app. It handles agents, swarms, the board, the reviewer, the engine, and the dashboard API on 127.0.0.1:7777.
 - `ui.html`: the dashboard.
 - `app/Horizon.swift`: the native app window.
-- Data lives in `~/.horizon/`. `runs/<id>/` holds each agent's `meta.json`, `log.txt` and `work/`. `projects/<id>/` holds each swarm's `meta.json` and `board.jsonl`.
+- Data lives in `~/.horizon/`:
+  - `runs/<id>/`: each agent's `meta.json`, `log.txt`, `work/` and `lab/`
+  - `projects/<id>/`: each swarm's `meta.json`, `board.jsonl` and `shared/` (milestones, raw, wiki, eval)
+  - `skills/`: the skill library every agent shares
 
 Test: `python3 -m unittest test_horizon`
