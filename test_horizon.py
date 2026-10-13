@@ -187,6 +187,34 @@ class Test(unittest.TestCase):
         horizon.save_config(url="https://api.example.com/v1/chat/completions")
         self.assertIn("local engine", horizon.finetune_tool(ctx, "finetune other"))
 
+    def test_tournament(self):
+        self.assertEqual(horizon.elo(1500, 1500, 1), (1516.0, 1484.0))
+        REPLIES[:] = ["A\nstronger evidence", "B\nsame one, shown second"]
+        self.assertEqual(horizon.judge("g", "x", "y")[0], 1.0)  # same pick both ways round: a win
+        REPLIES[:] = ["A", "A"]
+        self.assertEqual(horizon.judge("g", "x", "y")[0], 0.5)  # always picks the first slot: a draw
+
+        sid = horizon.new_swarm("shrink models", agents=4, budget=10**9)
+        ids = []
+        for part, st in (("int4", "done"), ("2-bit", "out of budget"), ("pruning", "out of budget"), ("cheat", "killed: faked"), ("new", "running")):
+            rid = horizon.start(part, 1000, project=sid)
+            m = json.loads((horizon.RUNS / rid / "meta.json").read_text())
+            m.update(status=st, steps=3 if part == "new" else 40, pid=1)
+            horizon.put(horizon.RUNS / rid / "meta.json", m); ids.append(rid)
+        raw = horizon.PROJECTS / sid / "shared" / "raw"
+        (raw / "results.jsonl").write_text("\n".join(json.dumps({"score": s, "by": ids[i]}) for i, s in ((0, 0.9), (1, 0.4), (1, 0.6))) + "\nnot json\n")
+        self.assertEqual(horizon.best_scores(sid), {ids[0]: 0.9, ids[1]: 0.6})
+
+        REPLIES[:] = ["B", "A"] * 2  # judged matches: the second-listed agent wins both orderings
+        t = horizon.tournament_round(sid, matches=3)
+        self.assertEqual(set(t["ratings"]), set(ids[:3]))  # killed and barely-started agents don't enter
+        self.assertEqual(sorted(m["how"] for m in t["matches"]), ["eval", "judge", "judge"])
+        self.assertEqual(len({frozenset(m["pair"]) for m in t["matches"]}), 3)  # no rematches while new pairings exist
+        self.assertEqual(sum(r["w"] + r["l"] + r["d"] for r in t["ratings"].values()), 6)
+        rows = horizon.standings(sid)
+        self.assertEqual([r["elo"] for r in rows], sorted((r["elo"] for r in rows), reverse=True))
+        self.assertEqual(horizon.leader(sid), rows[0]["id"])
+
     def test_gpu_sample(self):
         fake = self.tmp / "bin" / "macmon"
         fake.write_text("#!/bin/sh\necho '" + json.dumps({"gpu_freq_mhz": 1398, "gpu_active_ratio": 0.97, "gpu_power": 61.5,

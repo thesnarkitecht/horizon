@@ -47,6 +47,11 @@ input:focus { border-bottom-color: var(--acc); }
 .grid button { background: none; border: 0; padding: 1px; width: 13px; height: 15px; cursor: pointer; color: var(--dim); font-size: 12px; line-height: 1; }
 .grid button.running { color: var(--acc); } .grid button.done { color: var(--ok); } .grid button.bad { color: var(--bad); }
 .grid button.queued { color: var(--rule); } .grid button.sel { background: var(--fg); color: var(--bg); }
+table.lb { border-collapse: collapse; margin-top: 6px; width: 100%; }
+table.lb th { text-align: left; font-weight: 400; color: var(--dim); padding: 0 14px 2px 0; }
+table.lb td { padding: 1px 14px 1px 0; white-space: nowrap; }
+table.lb td:last-child { white-space: normal; width: 100%; }
+table.lb tbody tr { cursor: pointer; } table.lb tbody tr:hover, table.lb tr.sel { background: var(--sel); }
 pre { margin: 6px 0 0; max-height: 50vh; overflow: auto; white-space: pre-wrap; word-break: break-word; border-left: 1px dashed var(--rule); padding-left: 12px; }
 .a2 { color: var(--dim); } .a36 { color: var(--acc); } .a35 { color: #b26a00; }
 
@@ -56,7 +61,8 @@ dialog .f { display: flex; gap: 10px; align-items: baseline; margin: 6px 0; flex
 dialog .f > span:first-child { min-width: 90px; color: var(--dim); white-space: nowrap; }
 dialog .f input { flex: 1; }
 dialog pre { max-height: 140px; }
-@media (max-width: 700px) { main { padding: 14px 14px 40px; } .row { grid-template-columns: 28px 1fr; } .row .r { grid-column: 2; } .bar { display: none; } }
+@media (max-width: 700px) { table.lb :is(th, td):is(:nth-child(3), :nth-child(5)) { display: none; }
+  main { padding: 14px 14px 40px; } .row { grid-template-columns: 28px 1fr; } .row .r { grid-column: 2; } .bar { display: none; } }
 </style>
 </head>
 <body>
@@ -137,9 +143,15 @@ async function focus(x) {
     f.dataset.id = x.id; f.hidden = false; off = -1; agent = null;
     f.innerHTML = `<hr><h1 id="ft"></h1><div id="fs"></div>
       <hr><div class="dim">milestones</div><ul class="ms" id="fms"></ul>
-      ${swarm ? `<hr><div class="dim" id="gs"></div><div class="grid" id="grid" aria-label="agents"></div>` : ""}
+      ${swarm ? `<hr><div class="dim" id="ts"></div><table class="lb"><thead><tr><th>#</th><th>elo</th><th>w-l-d</th><th>score</th><th>agent</th><th>direction</th></tr></thead><tbody id="lb"></tbody></table>
+      <hr><div class="dim" id="gs"></div><div class="grid" id="grid" aria-label="agents"></div>` : ""}
       <hr><div class="dim" id="lh">${swarm ? "pick an agent above to follow its work" : "work"}</div><pre id="log" tabindex="0"></pre>`;
-    if (swarm) $("grid").onclick = e => { const b = e.target.closest("button"); if (b) { agent = b.dataset.id; off = -1; $("log").innerHTML = ""; tick(); } };
+    const follow = id => { agent = id; off = -1; $("log").innerHTML = ""; tick(); };
+    if (swarm) {
+      $("grid").onclick = e => { const b = e.target.closest("button"); if (b) follow(b.dataset.id); };
+      $("lb").onclick = e => { const r = e.target.closest("tr"); if (r) follow(r.dataset.id); };
+      $("lb").onkeydown = e => { const r = e.target.closest("tr"); if (r && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); follow(r.dataset.id); } };
+    }
   }
   const done = x.milestones.filter(m => m.done).length;
   $("ft").textContent = x.goal || x.hypothesis;
@@ -151,7 +163,14 @@ async function focus(x) {
   $("fms").innerHTML = x.milestones.map((m, i) => `<li class="${i === cur ? "now" : m.done ? "" : "dim"}"><span class="${m.done ? "ok" : i === cur ? "acc" : ""}">${m.done ? "[x]" : i === cur ? "[>]" : "[ ]"}</span><span>${esc(m.text)}</span></li>`).join("")
     || `<li class="dim">the agents are drafting milestones…</li>`;
   if (swarm) {
-    const kids = await get(`/projects/${x.id}/runs`);
+    const [kids, tour] = await Promise.all([get(`/projects/${x.id}/runs`), get(`/projects/${x.id}/tournament`)]);
+    $("ts").textContent = tour.rows.length
+      ? `tournament  ${tour.rows.length} rated · ${tour.matches} matches (${tour.matches - tour.by_eval} judged, ${tour.by_eval} by eval score) · leaders get revived`
+      : `tournament  starts once agents have ${10} steps of work`;
+    $("lb").innerHTML = tour.rows.slice(0, 10).map((r, i) => `<tr class="${r.id === agent ? "sel" : ""}" data-id="${r.id}" tabindex="0">
+      <td class="${i === 0 ? "acc" : "dim"}">${i + 1}</td><td>${Math.round(r.elo)}</td><td class="dim">${r.w}-${r.l}-${r.d}</td>
+      <td>${r.score == null ? '<span class="dim">—</span>' : esc(+r.score.toFixed(3))}</td><td class="dim">…${esc(r.id.slice(-4))}</td>
+      <td class="${kind(r.status) === "bad" ? "bad" : ""}">${esc(r.hypothesis)}</td></tr>`).join("");
     $("gs").textContent = `agents  ${x.running} running · ${x.finished} finished · ${x.done} succeeded`;
     // shortcut: draws the newest 4000 agents as DOM cells, switch to <canvas> if swarms grow past that
     $("grid").innerHTML = kids.slice(0, 4000).map(r => `<button type="button" class="${kind(r.status)} ${r.id === agent ? "sel" : ""}" data-id="${r.id}" title="${esc(r.hypothesis)} · ${esc(r.status)}" aria-label="agent ${r.id}, ${esc(r.status)}">■</button>`).join("");

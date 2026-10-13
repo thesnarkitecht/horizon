@@ -9,7 +9,7 @@ reviewer read. All agents share one model server, which batches them together.
 Horizon.app runs `horizon.py app` and shows its dashboard. The other subcommands are what the
 dashboard spawns (and handy for debugging): run, swarm, ls, log, stop, setup, serve.
 """
-import argparse, json, os, re, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, webbrowser
+import argparse, json, os, random, re, shutil, signal, subprocess, sys, threading, time, urllib.error, urllib.request, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -67,7 +67,8 @@ Your lab, in /shared (kept after you finish):
           what you learn before you stop: the wiki is how future you (and others) start where you ended.
   eval/   if the goal can be measured, ONE fixed evaluation script (eval/run.sh) that scores a
           candidate. Write it before optimizing, never change it to flatter a result, and append
-          every scored attempt to raw/results.jsonl ({"score":..., "what":..., "by":...}). Build on
+          every scored attempt to raw/results.jsonl ({"score":..., "what":..., "by": your run id}),
+          higher score = better (negate losses). The tournament ranks agents by these. Build on
           the best-scoring attempts, not on what sounds promising.
 Skills, in /skills, shared by every agent on this Mac across all research. Each is a folder with a
 SKILL.md (front matter "name:", "description:", "author:" your run id, and "verified:" the command
@@ -93,6 +94,15 @@ LIBRARIAN = ("Librarian: lint the wiki and skills. Merge duplicate pages, fix br
              "contradictions and stale claims, check claims against raw/, keep index.md complete; re-run each "
              "skill's verified: command and fix or delete broken skills; post TASK: for the gaps you find.")
 LIBRARIAN_EVERY = 8  # every 8th agent a swarm starts tends the wiki
+LEAD_EVERY = 5  # every 5th slot a swarm fills goes back to the tournament leader, if it has finished
+LEAD_NOTE = "you lead the lab's tournament; push your line of work further and close its open questions"
+TOURNAMENT_EVERY = 60  # seconds between tournament rounds
+MATCHES_PER_ROUND = 4
+MIN_STEPS = 10  # an agent enters the tournament once it has done this much work
+JUDGE = """You judge a research tournament. Two lines of work, A and B, pursue the same goal.
+Which is more likely to reach the goal? Weigh verified evidence over claims, milestones actually
+completed, eval scores, and how promising the next steps are. Ignore length and confident tone.
+Reply with exactly A or B on the first line, then one short reason."""
 
 REVIEWER = """You supervise an autonomous research agent. Read its goal, plan and recent steps.
 Kill it if it is misaligned: working on something other than the goal, claiming results it did not
@@ -460,6 +470,9 @@ def work(rid, echo=True):
     else:
         task = [{"role": "system", "content": SYSTEM + TOOLS + LAB}, {"role": "user", "content": f"Goal: {goal}"}]
     task[1]["content"] += f"\n\nSkills available in /skills:\n{skills_index() or '(none yet: mint the first)'}"
+    if pid and (top := standings(pid)[:5]):
+        task[1]["content"] += "\n\nTournament leaders (rated by the reviewer):\n" + "\n".join(
+            f"{n}. {r['hypothesis'][:120]} (agent {r['id']}, elo {r['elo']:.0f})" for n, r in enumerate(top, 1))
     if meta.get("revive"):
         task[1]["content"] += (f"\n\nYou are being revived to continue earlier work: {meta['revive']}\n"
                                "Your /work files are as you left them; start by reading notes.md and PLAN.md.")
@@ -587,7 +600,9 @@ def project(sid):
         except (OSError, KeyError, TypeError):
             p["status"] = "crashed"
     finished = sum(k["status"] not in ("queued", "running") for k in kids)
-    p.update(tokens=sum(k["tokens"] for k in kids), steps=sum(k["steps"] for k in kids),
+    t = PROJECTS / sid / "tournament.json"
+    judged = json.loads(t.read_text())["tokens"] if t.exists() else 0
+    p.update(tokens=sum(k["tokens"] for k in kids) + judged, steps=sum(k["steps"] for k in kids),
              running=sum(k["status"] == "running" for k in kids), total=len(kids),
              done=sum(k["status"] == "done" for k in kids), finished=finished,
              milestones=checklist(PROJECTS / sid / "shared" / "MILESTONES.md"))
@@ -597,6 +612,96 @@ def project(sid):
 
 def projects():
     return [project(d.name) for d in sorted(PROJECTS.glob("*"), reverse=True) if (d / "meta.json").exists()]
+
+
+def best_scores(sid):
+    """Best eval score per agent from the lab's raw/results.jsonl (higher is better)."""
+    f = PROJECTS / sid / "shared" / "raw" / "results.jsonl"
+    best = {}
+    for line in f.read_text(errors="replace").splitlines() if f.exists() else []:
+        try:
+            r = json.loads(line)
+            score, by = float(r["score"]), str(r["by"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        best[by] = max(best.get(by, score), score)
+    return best
+
+
+def entrant(m):
+    """What the judge sees of one agent's line of work."""
+    w = RUNS / m["id"] / "work"
+    tail = lambda f: (w / f).read_text(errors="replace")[-1500:] if (w / f).exists() else "(none)"
+    return (f"Direction: {m['hypothesis']}\nStatus: {m['status']}, {m['steps']} steps, "
+            f"plan {m['progress']:.0%} done\nRESULT.md:\n{tail('RESULT.md')}\nnotes.md (latest):\n{tail('notes.md')}")
+
+
+def judge(goal, a, b):
+    """1 if A wins, 0 if B, 0.5 for a draw. Asks twice with the sides swapped: a judge that just
+    prefers whichever comes first (or second) gives a draw, not a win."""
+    def ask(x, y):
+        reply, n = stream([{"role": "system", "content": JUDGE},
+                           {"role": "user", "content": f"Goal: {goal}\n\n== A ==\n{x}\n\n== B ==\n{y}"}],
+                          lambda s: None, review=True)
+        m = re.match(r"\W*([AB])\b", answer(reply).strip())
+        return m and m[1], n
+    (v1, n1), (v2, n2) = ask(a, b), ask(b, a)
+    s = 1.0 if (v1, v2) == ("A", "B") else 0.0 if (v1, v2) == ("B", "A") else 0.5
+    return s, n1 + n2
+
+
+def elo(ra, rb, score, k=32):
+    expected = 1 / (1 + 10 ** ((rb - ra) / 400))
+    return ra + k * (score - expected), rb - k * (score - expected)
+
+
+def tournament_round(sid, matches=MATCHES_PER_ROUND):
+    """Swiss-style: the least-played agent meets the closest-rated one it hasn't met yet. Eval scores
+    decide a match when both sides have one; otherwise the reviewer's base model judges."""
+    f = PROJECTS / sid / "tournament.json"
+    t = json.loads(f.read_text()) if f.exists() else {"ratings": {}, "matches": [], "tokens": 0}
+    pool = {k["id"]: k for k in runs(sid) if k["steps"] >= MIN_STEPS and k["hypothesis"] != LIBRARIAN
+            and not k["status"].startswith("killed")}
+    if len(pool) < 2:
+        return t
+    goal = json.loads((PROJECTS / sid / "meta.json").read_text())["goal"]
+    R, scores = t["ratings"], best_scores(sid)
+    for i in pool:
+        R.setdefault(i, {"elo": 1500.0, "w": 0, "l": 0, "d": 0})
+    met = {frozenset(m["pair"]) for m in t["matches"]}
+    games = lambda i: R[i]["w"] + R[i]["l"] + R[i]["d"]
+    for _ in range(matches):
+        a = min(pool, key=lambda i: (games(i), random.random()))
+        b = min((i for i in pool if i != a), key=lambda i: (frozenset((a, i)) in met, abs(R[i]["elo"] - R[a]["elo"])))
+        if a in scores and b in scores and scores[a] != scores[b]:
+            s, n, how = float(scores[a] > scores[b]), 0, "eval"
+        else:
+            s, n = judge(goal, entrant(pool[a]), entrant(pool[b]))
+            how = "judge"
+        R[a]["elo"], R[b]["elo"] = elo(R[a]["elo"], R[b]["elo"], s)
+        for i, r in ((a, s), (b, 1 - s)):
+            R[i]["w" if r == 1 else "l" if r == 0 else "d"] += 1
+        met.add(frozenset((a, b)))
+        t["matches"] = (t["matches"] + [{"pair": [a, b], "score": s, "how": how, "t": time.time()}])[-1000:]
+        t["tokens"] += n
+    put(f, t)
+    return t
+
+
+def standings(sid):
+    f = PROJECTS / sid / "tournament.json"
+    R = json.loads(f.read_text())["ratings"] if f.exists() else {}
+    kids, scores = {k["id"]: k for k in runs(sid)}, best_scores(sid)
+    rows = [{"id": i, **r, "score": scores.get(i), "hypothesis": kids[i]["hypothesis"], "status": kids[i]["status"]}
+            for i, r in R.items() if i in kids]
+    return sorted(rows, key=lambda r: -r["elo"])
+
+
+def leader(sid):
+    """The best-rated agent that has finished and can be revived."""
+    for r in standings(sid):
+        if r["status"] not in ("queued", "running") and not r["status"].startswith("killed"):
+            return r["id"]
 
 
 def revive(rid, why, extra_budget):
@@ -620,10 +725,22 @@ def swarm(sid):
     p.update(status="running", pid=os.getpid())
     put(f, p)
     signal.signal(signal.SIGTERM, _interrupt)
+
+    def compete():
+        try:
+            while True:
+                try:
+                    tournament_round(sid)
+                except Exception as e:  # a failed round must not stop the swarm
+                    print(f"tournament: {e}", flush=True)
+                time.sleep(TOURNAMENT_EVERY)
+        except KeyboardInterrupt:
+            pass
+    threading.Thread(target=compete, daemon=True).start()
     try:
         while True:
             kids = runs(sid)
-            if sum(k["tokens"] for k in kids) >= p["budget"]:
+            if project(sid)["tokens"] >= p["budget"]:
                 p["status"] = "out of budget"; break
             posts = board_read(sid)
             tasks = [x["text"][5:].strip() for x in posts if x["text"].startswith("TASK:")]
@@ -639,6 +756,8 @@ def swarm(sid):
                 p["spawned"] = p.get("spawned", 0) + 1
                 if p["spawned"] % LIBRARIAN_EVERY == 0:
                     part = LIBRARIAN
+                elif p["spawned"] % LEAD_EVERY == 0 and (top := leader(sid)) and revive(top, LEAD_NOTE, p["agent_budget"]):
+                    continue
                 elif p["next_task"] < len(tasks):
                     part = tasks[p["next_task"]]; p["next_task"] += 1
                 else:
@@ -716,6 +835,12 @@ class Dashboard(BaseHTTPRequestHandler):
             return self.reply(200, json.dumps(runs()).encode())
         if self.path == "/projects":
             return self.reply(200, json.dumps(projects()).encode())
+        m = re.fullmatch(r"/projects/(s[\w-]+)/tournament", self.path)
+        if m and (PROJECTS / m[1]).is_dir():
+            f = PROJECTS / m[1] / "tournament.json"
+            played = json.loads(f.read_text())["matches"] if f.exists() else []
+            return self.reply(200, json.dumps({"rows": standings(m[1])[:50], "matches": len(played),
+                                               "by_eval": sum(x["how"] == "eval" for x in played)}).encode())
         m = re.fullmatch(r"/projects/(s[\w-]+)/runs", self.path)
         if m and (PROJECTS / m[1]).is_dir():
             return self.reply(200, json.dumps(runs(m[1])).encode())
