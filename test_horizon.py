@@ -165,8 +165,8 @@ class Test(unittest.TestCase):
         self.assertEqual(horizon.vm(ctx, "vm exec db ls"), "no VM named db")
 
     def test_finetune_and_adopt(self):
-        lora = self.tmp / "bin" / "mlx_lm.lora"  # fake trainer: 0 iterations scores like the base model
-        lora.write_text('#!/bin/sh\ncase "$*" in *"--iters 0 "*) echo "Test loss 2.000, Test ppl 7.4.";; *) echo "Iter 600: Val loss 1.4"; echo "Test loss 1.500, Test ppl 4.5.";; esac\n')
+        lora = self.tmp / "bin" / "mlx_lm.lora"  # fake trainer: an empty --adapter-path scores the base model
+        lora.write_text('#!/bin/sh\ncase "$*" in *"--adapter-path "|*"--adapter-path  "*) echo "Test loss 2.000, Test ppl 7.4.";; *) echo "Iter 600: Val loss 1.4"; echo "Test loss 1.500, Test ppl 4.5.";; esac\n')
         lora.chmod(0o755)
         horizon.save_config(url=horizon.LOCAL)
         lab = self.tmp / "lab"; (lab / "train" / "facts").mkdir(parents=True)

@@ -290,9 +290,8 @@ def finetune(name):
     m = json.loads((a / "meta.json").read_text())
     lora = shutil.which("mlx_lm.lora") or "mlx_lm.lora"
 
-    def run(iters, out):
-        p = subprocess.Popen([lora, "--model", m["base"], "--train", "--iters", str(iters), "--test",
-                              "--data", str(a / "data"), "--adapter-path", str(a / out)],
+    def run(*args):
+        p = subprocess.Popen([lora, "--model", m["base"], "--test", "--data", str(a / "data"), *args],
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         text = ""
         for line in p.stdout:
@@ -300,8 +299,8 @@ def finetune(name):
         losses = re.findall(r"Test loss ([\d.]+)", text)
         return float(losses[-1]) if p.wait() == 0 and losses else None
 
-    m["base_loss"] = run(0, "untrained")  # shortcut: a 0-iteration LoRA is the base model, verify on first real run
-    m["test_loss"] = run(m["iters"], "lora")
+    m["base_loss"] = run("--adapter-path", "")  # mlx_lm's documented way to test the plain base model
+    m["test_loss"] = run("--train", "--iters", str(m["iters"]), "--adapter-path", str(a / "lora"))
     m["status"] = "trained" if m["test_loss"] is not None else "failed"
     put(a / "meta.json", m)
 
