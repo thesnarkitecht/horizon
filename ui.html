@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Horizon</title>
+<style>
+:root {
+  --bg: #f4f4f1; --panel: #fff; --ink: #0a0a0a; --dim: #6b6b6b; --line: #dcdcd6;
+  --blue: #0000f2; --green: #19c45a; --red: #e5322d; --amber: #d98a00;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #08080a; --panel: #111114; --ink: #ececec; --dim: #8a8a90; --line: #26262c; --blue: #5b5bff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.45 var(--mono); }
+header { display: flex; align-items: center; gap: 28px; padding: 14px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.mark { font-weight: 800; letter-spacing: .28em; font-size: 15px; }
+.mark span { color: var(--blue); }
+.stat { display: flex; flex-direction: column; }
+.stat b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat small, .label { color: var(--dim); text-transform: uppercase; letter-spacing: .12em; font-size: 10px; }
+#spark { width: 160px; height: 34px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--red); margin-right: 6px; }
+.dot.up { background: var(--green); }
+main { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; height: calc(100vh - 67px); }
+aside { border-right: 1px solid var(--line); overflow: auto; }
+.prompt { padding: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.prompt .row { display: flex; gap: 8px; }
+input, button { font: inherit; color: inherit; }
+input { width: 100%; background: var(--panel); border: 1px solid var(--line); padding: 8px 10px; border-radius: 0; }
+input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
+.goal { display: flex; align-items: center; background: var(--panel); border: 1px solid var(--line); }
+.goal span { padding-left: 10px; color: var(--blue); font-weight: 700; }
+.goal input { border: 0; }
+button { background: var(--blue); color: #fff; border: 0; padding: 8px 14px; cursor: pointer; letter-spacing: .08em; text-transform: uppercase; font-size: 11px; white-space: nowrap; }
+button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.run { display: grid; grid-template-columns: 46px 1fr; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.run:hover, .run.sel { background: var(--panel); }
+.run.sel { box-shadow: inset 3px 0 var(--blue); }
+.run > div { min-width: 0; }
+.run .h { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run .m { color: var(--dim); font-size: 11px; }
+.ring circle { fill: none; stroke-width: 9; }
+.ring .track { stroke: var(--line); }
+.ring .bar { stroke: var(--blue); stroke-linecap: round; transition: stroke-dashoffset .6s ease; transform: rotate(-90deg); transform-origin: 50% 50%; }
+.ring.done .bar { stroke: var(--green); }
+.ring.bad .bar { stroke: var(--red); }
+.ring.live .bar { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .ring.live .bar { animation: none; } .ring .bar { transition: none; } }
+.ring text { fill: var(--ink); font: 600 22px var(--mono); text-anchor: middle; dominant-baseline: central; }
+section { display: flex; flex-direction: column; min-width: 0; }
+.detail { display: flex; gap: 22px; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.detail h2 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+.detail .grow { flex: 1; min-width: 0; }
+pre { margin: 0; flex: 1; overflow: auto; padding: 16px 20px; white-space: pre-wrap; word-break: break-word; }
+.a2 { color: var(--dim); } .a36 { color: var(--blue); font-weight: 600; } .a35 { color: var(--amber); }
+details.engine { border-bottom: 1px solid var(--line); padding: 12px 14px; }
+details.engine summary { cursor: pointer; }
+details.engine .row { margin-top: 8px; }
+details.engine pre { max-height: 140px; padding: 8px; background: var(--panel); margin-top: 8px; font-size: 11px; }
+.empty { color: var(--dim); padding: 40px 20px; }
+@media (max-width: 760px) { main { grid-template-columns: 1fr; height: auto; } aside { border-right: 0; } pre { min-height: 50vh; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">HORIZ<span>O</span>N</div>
+  <div class="stat"><b id="tps">0</b><small>tok/s</small></div>
+  <svg id="spark" viewBox="0 0 160 34" preserveAspectRatio="none" aria-label="tokens per second, last 2 minutes"><polyline fill="none" stroke="var(--blue)" stroke-width="1.5" points=""/></svg>
+  <div class="stat"><b id="tot">0</b><small>tokens total</small></div>
+  <div class="stat"><b id="act">0</b><small>running</small></div>
+  <div class="stat"><b id="spm">0</b><small>steps/min</small></div>
+  <div class="stat"><span><span class="dot" id="dot"></span><b id="model" style="font-size:13px">engine down</b></span><small id="cluster">single mac</small></div>
+</header>
+<main>
+  <aside>
+    <form class="prompt" id="new">
+      <label class="goal"><span>›</span><input id="goal" placeholder="hypothesis, or path to PLAN.md" aria-label="hypothesis" autocomplete="off"></label>
+      <div class="row">
+        <input id="repo" placeholder="git repo URL (optional)" aria-label="git repo">
+        <input id="budget" placeholder="budget" value="1000000" aria-label="token budget" style="width:110px" inputmode="numeric">
+        <button>Run</button>
+      </div>
+    </form>
+    <details class="engine">
+      <summary class="label">Engine</summary>
+      <div class="row prompt" style="padding:0;border:0">
+        <div class="row"><input id="smodel" placeholder="model (default Ornith-1.5-397B 4-bit)" aria-label="model"><button type="button" id="serve">Start</button><button type="button" class="ghost" id="halt">Stop</button></div>
+        <div class="row"><input id="hosts" placeholder="studio1.local,studio2.local" aria-label="hosts to pair"><button type="button" class="ghost" id="pair">Pair</button></div>
+      </div>
+      <pre id="elog"></pre>
+    </details>
+    <div id="runs"></div>
+  </aside>
+  <section>
+    <div class="detail" id="detail" hidden>
+      <span id="bigring"></span>
+      <div class="grow"><h2 id="dh"></h2><div class="m" id="dm"></div></div>
+      <button class="ghost" id="stop">Stop</button>
+    </div>
+    <pre id="log" aria-live="off"><span class="empty">Start a run, or pick one on the left.</span></pre>
+  </section>
+</main>
+<script>
+const H = {"X-Horizon": "1", "Content-Type": "application/json"};
+const $ = id => document.getElementById(id);
+const post = (path, body) => fetch(path, {method: "POST", headers: H, body: JSON.stringify(body || {})});
+let sel = null, off = 0, prev = {}, prevT = 0, hist = [], stepHist = [];
+
+function ring(p, cls, size) {
+  const r = 40, c = 2 * Math.PI * r;
+  return `<svg class="ring ${cls}" width="${size}" height="${size}" viewBox="0 0 100 100" role="img" aria-label="${Math.round(p * 100)} percent">
+    <circle class="track" cx="50" cy="50" r="${r}"/>
+    <circle class="bar" cx="50" cy="50" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}"/>
+    ${size > 60 ? `<text x="50" y="50">${Math.round(p * 100)}%</text>` : ""}</svg>`;
+}
+const cls = s => s === "running" ? "live" : s === "done" ? "done" : /kill|fail|error|crash/.test(s) ? "bad" : "";
+const esc = s => s.replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"})[c]);
+const ansi = s => esc(s).replace(/\x1b\[(\d+)m/g, (_, n) => n === "0" ? "</span>" : `<span class="a${n}">`);
+const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n);
+
+async function tick() {
+  const runs = await (await fetch("/runs")).json(), now = Date.now() / 1000, dt = now - prevT || 1;
+  let tps = 0, steps = 0;
+  const rate = {};
+  for (const r of runs) {
+    const p = prev[r.id];
+    rate[r.id] = p && r.status === "running" ? Math.max(0, (r.tokens - p.tokens) / dt) : 0;
+    tps += rate[r.id];
+    steps += p ? r.steps - p.steps : 0;
+  }
+  if (prevT) { hist.push(tps); stepHist.push([now, steps]); }
+  hist = hist.slice(-60); stepHist = stepHist.filter(([t]) => now - t < 60);
+  prev = Object.fromEntries(runs.map(r => [r.id, r])); prevT = now;
+  $("tps").textContent = tps.toFixed(1);
+  $("tot").textContent = fmt(runs.reduce((a, r) => a + r.tokens, 0));
+  $("act").textContent = runs.filter(r => r.status === "running").length;
+  $("spm").textContent = stepHist.reduce((a, [, s]) => a + s, 0);
+  const max = Math.max(1, ...hist);
+  $("spark").firstElementChild.setAttribute("points", hist.map((v, i) => `${i * 160 / 59},${32 - v / max * 30}`).join(" "));
+  $("runs").innerHTML = runs.map(r => `<div class="run ${r.id === sel ? "sel" : ""}" data-id="${r.id}" tabindex="0">
+    ${ring(r.progress, cls(r.status), 46)}
+    <div><div class="h">${esc(r.hypothesis)}</div>
+    <div class="m">${esc(r.status)} · ${Math.round(r.progress * 100)}% · ${r.steps} steps · ${fmt(r.tokens)} tok${rate[r.id] ? " · " + rate[r.id].toFixed(1) + " tok/s" : ""}${r.repo ? " · git" : ""}</div></div></div>`).join("") || `<div class="empty">No runs yet.</div>`;
+  const r = runs.find(r => r.id === sel);
+  if (r) {
+    $("detail").hidden = false;
+    $("bigring").innerHTML = ring(r.progress, cls(r.status), 84);
+    $("dh").textContent = r.hypothesis;
+    $("dm").textContent = `${r.id} · ${r.status} · ${r.steps} steps · ${fmt(r.tokens)} / ${fmt(r.budget)} tokens${r.repo ? " · branch horizon/" + r.id : ""}`;
+    $("stop").hidden = r.status !== "running";
+    const t = await (await fetch(`/runs/${r.id}/log?from=${off}`)).text();
+    if (t) {
+      const log = $("log"), stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+      if (!off) log.innerHTML = "";
+      off += new TextEncoder().encode(t).length;
+      log.insertAdjacentHTML("beforeend", ansi(t));
+      if (stick) log.scrollTop = log.scrollHeight;
+    }
+  }
+}
+
+async function engine() {
+  const s = await (await fetch("/status")).json();
+  $("dot").className = "dot" + (s.up ? " up" : "");
+  $("model").textContent = s.up ? (s.models[0] || "engine up").split("/").pop() : "engine down";
+  $("cluster").textContent = s.hosts ? `${(Array.isArray(s.hosts) ? s.hosts : s.hosts.hosts || []).length || 2} macs · jaccl` : "single mac";
+  $("elog").textContent = (s.serve_log + s.setup_log).slice(-3000) || "No engine output yet.";
+}
+
+function pick(id) { sel = id; off = 0; $("log").innerHTML = ""; tick(); }
+$("runs").onclick = e => { const el = e.target.closest(".run"); if (el) pick(el.dataset.id); };
+$("runs").onkeydown = e => { if (e.key === "Enter") { const el = e.target.closest(".run"); if (el) pick(el.dataset.id); } };
+$("new").onsubmit = async e => {
+  e.preventDefault();
+  const hypothesis = $("goal").value.trim();
+  if (!hypothesis) return $("goal").focus();
+  const r = await post("/runs", {hypothesis, repo: $("repo").value, budget: +$("budget").value || 1000000});
+  if (r.ok) { $("goal").value = ""; pick((await r.json()).id); }
+};
+$("stop").onclick = () => post(`/runs/${sel}/stop`);
+$("serve").onclick = () => post("/serve", {model: $("smodel").value});
+$("halt").onclick = () => post("/serve/stop");
+$("pair").onclick = async () => { if (!(await post("/setup", {hosts: $("hosts").value})).ok) alert("Enter at least two hostnames, comma separated."); };
+const loop = (f, ms) => { const go = () => f().catch(() => {}).finally(() => setTimeout(go, ms)); go(); };
+loop(tick, 1000); loop(engine, 3000);
+$("goal").focus();
+</script>
+</body>
+</html>
